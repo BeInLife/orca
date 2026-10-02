@@ -47,11 +47,11 @@ const PRESET_QUERIES: Record<YouTrackIssuePreset, string> = {
 
 const VIEWER_FIELDS = 'id,login,fullName,email,avatarUrl'
 
-function errorMessage(error: unknown, fallback: string): string {
+export function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
-function getCredentials(): YouTrackCredentials {
+export function getCredentials(): YouTrackCredentials {
   const site = getSite()
   const token = site ? readToken() : null
   if (!site || !token) {
