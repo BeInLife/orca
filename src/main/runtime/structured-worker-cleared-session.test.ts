@@ -242,6 +242,50 @@ describe('a structured worker continued by /clear is served by its successor', (
   })
 })
 
+describe('terminal read by the Orca session ID an agent is shown', () => {
+  beforeEach(() => {
+    structuredWorkerIdentities.clear()
+    historyAsked.length = 0
+    installClearedWorkerHost()
+  })
+
+  it('reads a worker at orca_session_id:<its id>, served by the session running it', async () => {
+    registerWorker()
+    const read = await readStructuredWorkerTerminal({
+      handle: `orca_session_id:${MINTED}`,
+      db: null
+    })
+    expect(read?.handle).toBe(`orca_session_id:${MINTED}`)
+    expect(historyAsked).toEqual([SUCCESSOR])
+  })
+
+  it('reads a chat, in the same shape a terminal read has', async () => {
+    // No worker registered: MINTED is an ordinary chat the user cleared.
+    const read = await readStructuredWorkerTerminal({
+      handle: `orca_session_id:${MINTED}`,
+      db: null
+    })
+    expect(historyAsked).toEqual([SUCCESSOR])
+    expect(read).toMatchObject({ status: 'running', nextCursor: null, truncated: false })
+    expect(read?.tail.join('\n')).toContain('POST-CLEAR')
+  })
+
+  it('refuses a cursor, as for any structured session', async () => {
+    await expect(
+      readStructuredWorkerTerminal({ handle: `orca_session_id:${MINTED}`, db: null, cursor: 0 })
+    ).rejects.toThrow(/without a cursor/)
+  })
+
+  it('leaves an address naming no session to the terminal lookup', async () => {
+    expect(
+      await readStructuredWorkerTerminal({
+        handle: 'orca_session_id:9e1d2c3b-4a5f-4e6d-8c7b-6a5f4e3d2c1b',
+        db: null
+      })
+    ).toBeNull()
+  })
+})
+
 describe('one lineage walk, one failure contract', () => {
   beforeEach(() => {
     structuredWorkerIdentities.clear()
@@ -283,5 +327,17 @@ describe('one lineage walk, one failure contract', () => {
     ).rejects.toMatchObject({ code: 'session_caller_host_boundary' })
     // Mail maps the same verdict to "not deliverable here".
     expect(structuredWorkerMailSessionId(MINTED)).toBeNull()
+  })
+
+  it('refuses a chat on another host with the typed host-boundary refusal', async () => {
+    const successor = records.get(SUCCESSOR)!
+    records.set(SUCCESSOR, {
+      ...successor,
+      location: { ...successor.location, executionHostId: 'ssh:box' }
+    })
+
+    await expect(
+      readStructuredWorkerTerminal({ handle: `orca_session_id:${MINTED}`, db: null })
+    ).rejects.toMatchObject({ code: 'session_caller_host_boundary' })
   })
 })

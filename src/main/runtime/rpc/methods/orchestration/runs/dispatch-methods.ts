@@ -16,6 +16,8 @@ import {
   orcaSessionIdOrHandle,
   resolveDispatchAssigneeParty
 } from '../../../../orchestration/orchestration-party'
+import { queueDispatchPreambleTurn } from '../../../../orchestration/dispatch-preamble-turn'
+import { assertChatAssigneeReachable } from '../messaging/session-recipient'
 
 export const ORCHESTRATION_DISPATCH_METHODS = [
   defineMethod({
@@ -51,7 +53,13 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
           runId: run.id
         })
       }
-      const assignee = params.to ? resolveDispatchAssigneeParty(params.to, db).address : undefined
+      const assigneeParty = params.to ? resolveDispatchAssigneeParty(params.to, db) : undefined
+      if (assigneeParty) {
+        await assertChatAssigneeReachable(runtime, assigneeParty, db)
+      }
+      const assignee = assigneeParty?.address
+      // A chat is addressed, not a pane: it has no pane, process or agent probe to consult.
+      const chatAssignee = assigneeParty?.terminalHandle === null
 
       // Why: dry-run previews the preamble without mutating state, so it skips the ready-status check and uses a placeholder dispatchId.
       if (params.dryRun) {
@@ -86,9 +94,10 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
         )
       }
 
-      const dispatchAuthority = runtime.getOrchestrationDispatchAuthority(to)
-      const assigneePaneKey =
-        dispatchAuthority?.paneKey ?? runtime.getTerminalPaneKey(to) ?? undefined
+      const dispatchAuthority = chatAssignee ? null : runtime.getOrchestrationDispatchAuthority(to)
+      const assigneePaneKey = chatAssignee
+        ? undefined
+        : (dispatchAuthority?.paneKey ?? runtime.getTerminalPaneKey(to) ?? undefined)
       const processIncarnation =
         dispatchAuthority?.paneKey && dispatchAuthority.processIncarnation
           ? dispatchAuthority.processIncarnation
@@ -115,14 +124,14 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
       }
 
       // Why: injecting the preamble into a bare shell dumps it as shell commands (gibberish), so require a detected agent first.
-      if (params.inject) {
+      if (params.inject && !chatAssignee) {
         const hasAgent = await runtime.isTerminalRunningAgent(to)
         if (!hasAgent) {
           throw injectRejectedError(to, 'no_agent_detected')
         }
       }
 
-      if (params.inject && (!assigneePaneKey || !processIncarnation)) {
+      if (params.inject && !chatAssignee && (!assigneePaneKey || !processIncarnation)) {
         throw new OrchestrationError(
           'stable_pane_required',
           `Terminal ${to} has no stable pane/process incarnation for lifecycle authority.`
@@ -154,7 +163,16 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
 
       let injected = false
       let prompt
-      if (params.inject) {
+      if (params.inject && chatAssignee) {
+        // Owed as a turn the chat's mail lane delivers once it can take one, as a busy PTY queues it.
+        queueDispatchPreambleTurn(runtime, db, {
+          dispatchId: ctx.id,
+          runId: ctx.run_id,
+          from: params.from ?? 'coordinator',
+          preamble
+        })
+        injected = true
+      } else if (params.inject) {
         try {
           prompt = await runtime.sendTerminalAgentPrompt(
             to,

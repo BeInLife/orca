@@ -1,5 +1,6 @@
 /**
- * `terminal read` for a worker that IS a structured agent session.
+ * `terminal read` for a worker that IS a structured agent session, or any chat named by its
+ * `orca_session_id:<id>` address.
  *
  * Peers peek at each other's recent output constantly, and for a PTY worker that is `terminal
  * read`. A structured worker had no answer at all: `worker-read` demands a dispatch id and
@@ -28,10 +29,17 @@
  * writable and is not.
  */
 
+import { parseOrcaSessionAddress } from '../../shared/orca-session-address'
 import type { RuntimeTerminalRead } from '../../shared/runtime-types'
 import { formatWorkerTranscriptMessage } from '../../shared/worker-transcript-text'
 import { AGENT_SESSION_NOT_ATTACHED } from '../native-chat/agent-session-wire/structured-agent-session-mutation-admission'
 import type { OrchestrationDb } from './orchestration/db'
+import { resolveOrchestrationParty } from './orchestration/orchestration-party'
+import {
+  otherHostSessionRefusal,
+  readAgentSessionRecordStore,
+  resolveExecutingSession
+} from './orchestration/structured-session-lineage'
 import { boundStructuredJournalTail } from './orchestration/structured-worker-journal-archive'
 import { readStructuredJournalPage } from './orchestration/structured-worker-journal-page'
 import {
@@ -43,8 +51,8 @@ import {
 import { readTerminalTail } from './terminal-tail-read'
 
 /**
- * The recent output of a structured worker, read off the session running it now; null when this
- * handle is not one.
+ * The recent output of a structured session, named by a structured worker's handle or by any
+ * session's `orca_session_id:<id>`, the address every agent is shown; null when the handle names neither.
  *
  * Null is the "not mine" answer, so the PTY path keeps every handle it already owned. A handle that
  * IS a structured worker never falls through: an unreadable journal refuses rather than answering
@@ -56,11 +64,10 @@ export async function readStructuredWorkerTerminal(args: {
   cursor?: number
   limit?: number
 }): Promise<RuntimeTerminalRead | null> {
-  const identity = resolveStructuredWorkerAuthority(args.handle, args.db)?.identity
-  if (!identity) {
+  const sessionId = structuredSessionReadTarget(args.handle, args.db)
+  if (!sessionId) {
     return null
   }
-  const sessionId = structuredWorkerSessionId(identity)
   if (args.cursor !== undefined) {
     // No index can be re-anchored here, so this refusal names no paging alternative — there is
     // none. `terminal.read`'s cursor indexes an append-only completed-line buffer with a monotone
@@ -110,4 +117,21 @@ export async function readStructuredWorkerTerminal(args: {
   // honour.
   const { oldestCursor: _oldest, latestCursor: _latest, ...withoutCursorSpace } = read
   return { ...withoutCursorSpace, nextCursor: null }
+}
+
+/** The session a read names, as it runs now: a worker's successor, or a chat's live session. */
+function structuredSessionReadTarget(handle: string, db: OrchestrationDb | null): string | null {
+  const party = parseOrcaSessionAddress(handle) ? resolveOrchestrationParty(handle, db) : null
+  const workerHandle = party ? party.terminalHandle : handle
+  if (workerHandle !== null) {
+    const worker = resolveStructuredWorkerAuthority(workerHandle, db)?.identity
+    return worker ? structuredWorkerSessionId(worker) : null
+  }
+  const store = readAgentSessionRecordStore()
+  const executing =
+    party?.orcaSessionId && store ? resolveExecutingSession(store, party.orcaSessionId) : null
+  if (executing?.kind === 'other-host') {
+    throw otherHostSessionRefusal(party?.orcaSessionId ?? handle)
+  }
+  return executing?.kind === 'here' ? executing.sessionId : null
 }

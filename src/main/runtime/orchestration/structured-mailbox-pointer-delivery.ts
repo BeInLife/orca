@@ -10,11 +10,17 @@
  * Coordinators are in scope here, unlike the PTY lane's reasoning: a PTY coordinator blocks in
  * `check --wait`, where a waiter preempts pointer delivery, but a structured coordinator is a chat
  * session whose turn ends — so nothing else would ever prompt it for its own `run:` mail.
+ *
+ * A chat assignee's owed dispatch preamble is the one exception to pointing: it is the turn a PTY
+ * assignee would have typed into its pane. It goes alone, as its own body, and the turn it becomes
+ * is its reading, so an accepted one is marked read. Every other message, whatever its type, gets
+ * the pointer (see `isOwedDispatchPreamble`).
  */
 
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
-import type { OrchestrationDb } from './db'
+import type { MessageRow, OrchestrationDb } from './db'
 import { formatMessagePointer } from './formatter'
+import { isOwedDispatchPreamble } from './dispatch-preamble-identity'
 import type { OrchestrationCliCommand } from './cli-command'
 import {
   selectOrchestrationPointerBatch,
@@ -195,7 +201,7 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     db: OrchestrationDb,
     mailboxHandle: string,
     target: StructuredPointerTarget,
-    unread: readonly { id: string; type: string; sequence: number }[],
+    unread: readonly MessageRow[],
     reservedTypes: ReadonlySet<string> | undefined
   ): Promise<void> {
     const sessionId = target.sessionId
@@ -210,17 +216,17 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       this.retain(mailboxHandle, sessionId, 'session-not-attached', reservedTypes)
       return
     }
+    const preamble = unread.find((message) => isOwedDispatchPreamble(mailboxHandle, message))
+    const batch = preamble ? [preamble] : unread
+    const text = preamble
+      ? preamble.body
+      : formatMessagePointer(unread.length, mailboxHandle, this.deps.getCliCommand()).trim()
     const body: AgentJournalMessageItem = {
       kind: 'message',
       role: 'user',
-      blocks: [
-        {
-          type: 'text',
-          text: formatMessagePointer(unread.length, mailboxHandle, this.deps.getCliCommand()).trim()
-        }
-      ]
+      blocks: [{ type: 'text', text }]
     }
-    const staged = unread.map((message) => message.id)
+    const staged = batch.map((message) => message.id)
     const operation = resolveStructuredPointerOperation({
       db,
       mailboxHandle,
@@ -232,7 +238,7 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     })
     if (operation.kind === 'stamp') {
       // A send this lane gave up waiting on ran after all.
-      db.markAsDelivered(staged)
+      this.markPointed(db, staged, preamble !== undefined)
       db.deleteStructuredPointerOperation(mailboxHandle)
       this.sentOperationIds.delete(mailboxHandle)
       return
@@ -259,11 +265,20 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       this.retain(mailboxHandle, sessionId, retainReasonForDispatch(outcome.state), reservedTypes)
       return
     }
-    db.markAsDelivered(staged)
+    this.markPointed(db, staged, preamble !== undefined)
     // The nudge landed as its own turn, so the next settle edge is the natural retry point for
     // anything that arrives while it runs.
     db.deleteStructuredPointerOperation(mailboxHandle)
     this.sentOperationIds.delete(mailboxHandle)
+  }
+
+  /** A preamble turn is its own reading, so it is read too; a pointer points at mail `check` reads. */
+  private markPointed(db: OrchestrationDb, staged: readonly string[], preamble: boolean): void {
+    if (preamble) {
+      db.markAsReadAndDelivered([...staged])
+    } else {
+      db.markAsDelivered([...staged])
+    }
   }
 
   /**

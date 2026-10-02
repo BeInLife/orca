@@ -7,8 +7,9 @@ export function prepareStartingWorkerAuthority(
   params: {
     dispatchId: string
     handle: string
-    paneKey: string
-    processIncarnation: string
+    /** Both null for a chat assignee, which is proven by its session instead. */
+    paneKey: string | null
+    processIncarnation: string | null
     launchTokenHash?: string
     worktreeId: string
     effects: unknown[]
@@ -41,7 +42,7 @@ export function prepareStartingWorkerAuthority(
         `Dispatch ${params.dispatchId} already has a different launch-token commitment.`
       )
     }
-    const existing = this.findActiveDispatchForAssignee(params.handle, params.paneKey)
+    const existing = this.findActiveDispatchForAssignee(params.handle, params.paneKey ?? undefined)
     if (existing && existing.id !== params.dispatchId) {
       throw new Error(
         `Terminal ${params.handle} already has an active dispatch (${existing.id} for task ${existing.task_id})`
@@ -61,7 +62,10 @@ export function prepareStartingWorkerAuthority(
       .run(
         params.handle,
         params.paneKey,
-        dispatchAssigneeOrcaSessionId(params.processIncarnation),
+        dispatchAssigneeOrcaSessionId({
+          handle: params.handle,
+          processIncarnation: params.processIncarnation
+        }),
         params.processIncarnation,
         params.hostScope ?? null,
         params.launchTokenHash ?? null,
