@@ -1,5 +1,12 @@
 import type { TerminalLaunchPromptDisposal } from '../../shared/agent-launch-intent'
 import { AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS } from '../../shared/agent-session-host-authority'
+import type { OrcaRuntimeService } from './orca-runtime'
+
+/** The runtime that writes launch prompts into its terminals, and so owns their records. */
+export type LaunchPromptWritingRuntime = Pick<
+  OrcaRuntimeService,
+  'waitForTerminal' | 'sendTerminalAgentPrompt'
+>
 
 // Why the create ledger's age: a replayed create re-sends its `pending` reply for that long, so the
 // record it points at must still answer; it holds only an outcome, never the prompt.
@@ -96,10 +103,12 @@ export class HostLaunchPromptDeliveries {
   }
 }
 
-const deliveriesByOwner = new WeakMap<object, HostLaunchPromptDeliveries>()
+const deliveriesByOwner = new WeakMap<LaunchPromptWritingRuntime, HostLaunchPromptDeliveries>()
 
 /** The registry for one runtime, so its creates and its `terminal.wait` share it. */
-export function hostLaunchPromptDeliveriesFor(owner: object): HostLaunchPromptDeliveries {
+export function hostLaunchPromptDeliveriesFor(
+  owner: LaunchPromptWritingRuntime
+): HostLaunchPromptDeliveries {
   let deliveries = deliveriesByOwner.get(owner)
   if (!deliveries) {
     deliveries = new HostLaunchPromptDeliveries()

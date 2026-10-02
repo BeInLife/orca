@@ -30,6 +30,13 @@ function request(
   }
 }
 
+// Reads the create ledger the runtime keeps to itself, for the one test that inspects it.
+class LedgerReadingRuntime extends OrcaRuntimeService {
+  createOperationReclaims() {
+    return [...this.agentSessionCreateOperations.values()].map((operation) => operation.reclaim)
+  }
+}
+
 function createRuntime(
   workspace: { id: string; path: string; connectionId: string | null } = {
     id: 'worktree-1',
@@ -38,7 +45,7 @@ function createRuntime(
   }
 ) {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: createAgentSession reads only these four settings from the store before the stubbed spawn.
-  const runtime = new OrcaRuntimeService({
+  const runtime = new LedgerReadingRuntime({
     getSettings: () => ({
       disabledTuiAgents: [],
       agentCmdOverrides: {},
@@ -204,9 +211,10 @@ describe('a paired create handed a prompt its launch command cannot carry', () =
 
     await runtime.createAgentSession(request())
 
-    const [operation] = Reflect.get(runtime, 'agentSessionCreateOperations').values()
-    expect(operation.reclaim).not.toHaveProperty('owedLaunchPrompt', OVERSIZED_PROMPT)
-    expect(operation.reclaim.owedLaunchPrompt).toBeUndefined()
+    const [reclaim] = runtime.createOperationReclaims()
+    expect(reclaim).toBeDefined()
+    expect(reclaim).not.toHaveProperty('owedLaunchPrompt', OVERSIZED_PROMPT)
+    expect(reclaim?.owedLaunchPrompt).toBeUndefined()
   })
 
   it('builds a draft exactly as before, on the draft rule, with nothing owed', async () => {

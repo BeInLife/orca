@@ -23,13 +23,11 @@
 
 import { randomUUID } from 'node:crypto'
 import { isAgentPromptStalledError } from '../../agent-prompt-submission-verification'
-import type { OrcaRuntimeService } from '../../orca-runtime'
+import type { LaunchPromptWritingRuntime } from '../../host-launch-prompt-deliveries'
 import { HOST_LAUNCH_PROMPT_READY_TIMEOUT_MS } from '../../../../shared/host-launch-prompt-budget'
 
 // How soon a launch held by a startup dialog looks again for the composer.
 const STARTUP_DIALOG_RECHECK_MS = 1_000
-
-type TerminalPromptRuntime = Pick<OrcaRuntimeService, 'waitForTerminal' | 'sendTerminalAgentPrompt'>
 
 /**
  * Whether the text reached the pane.
@@ -46,7 +44,7 @@ type TerminalPromptRuntime = Pick<OrcaRuntimeService, 'waitForTerminal' | 'sendT
  * resend into a live TUI costs a duplicate turn.
  */
 export async function deliverTerminalAgentLaunchPrompt(args: {
-  runtime: TerminalPromptRuntime
+  runtime: LaunchPromptWritingRuntime
   handle: string
   text: string
   /**
@@ -93,7 +91,7 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
  * the composer gets a fresh readiness budget once the dialog is gone.
  */
 async function waitForLaunchComposer(args: {
-  runtime: TerminalPromptRuntime
+  runtime: LaunchPromptWritingRuntime
   handle: string
   startupDialogDeadlineMs?: number
 }): Promise<boolean> {
