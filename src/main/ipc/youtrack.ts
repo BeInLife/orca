@@ -8,7 +8,8 @@ import {
   getStateOptions,
   getStatus,
   listIssues,
-  setState
+  setState,
+  testConnection
 } from '../youtrack/client'
 import {
   createIssue,
@@ -70,6 +71,8 @@ const invalidIssue = { ok: false, error: 'A valid YouTrack issue id is required.
 /** Registers every `youtrack:*` IPC handler on the main process. */
 export function registerYouTrackHandlers(): void {
   ipcMain.handle('youtrack:status', () => getStatus())
+
+  ipcMain.handle('youtrack:testConnection', () => testConnection())
 
   ipcMain.handle(
     'youtrack:connect',

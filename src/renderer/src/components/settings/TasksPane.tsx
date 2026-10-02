@@ -24,7 +24,8 @@ import {
 } from './task-source-setup-state'
 import {
   JIRA_INTEGRATION_SECTION_ID,
-  LINEAR_INTEGRATION_SECTION_ID
+  LINEAR_INTEGRATION_SECTION_ID,
+  YOUTRACK_INTEGRATION_SECTION_ID
 } from './task-provider-integration-section-ids'
 import { getTasksPaneSearchKeywords } from './tasks-search'
 import { useIntegrationProviderStatusRefresh } from './use-integration-provider-status-refresh'
@@ -248,6 +249,7 @@ export function TasksPane({ settings, updateSettings }: TasksPaneProps): React.J
                     visible={visible}
                     canHide={canHide}
                     onToggleVisible={() => toggleProvider('youtrack')}
+                    onOpenIntegrations={() => openIntegrations(YOUTRACK_INTEGRATION_SECTION_ID)}
                   />
                 ) : (
                   <CodeHostSetupSteps
