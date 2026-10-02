@@ -14,6 +14,7 @@ import {
   type WorkspaceEmojiSuggestion
 } from '@/lib/workspace-emoji-shortcodes'
 import { resolveSmartWorkspaceCommandValue } from './smart-workspace-command-value'
+import type { SmartWorkspaceSourceIntent } from './smart-workspace-command-value'
 import {
   buildSmartWorkspaceSourceRows,
   getVisibleBranchResults,
@@ -40,6 +41,7 @@ export function useSmartWorkspaceNameFieldPresentation(
 ) {
   const {
     jiraSource,
+    youtrackIssue,
     branches,
     mode,
     branchResultsSource,
@@ -141,7 +143,8 @@ export function useSmartWorkspaceNameFieldPresentation(
       gitlabUrlIntent,
       mode,
       resultLimit: RESULT_LIMIT,
-      value
+      value,
+      youtrackIssue
     })
   }, [
     branches,
@@ -162,7 +165,8 @@ export function useSmartWorkspaceNameFieldPresentation(
     linearUrlLookupFailed,
     mode,
     selectedRepo?.id,
-    value
+    value,
+    youtrackIssue
   ])
   const { typedTextActionRow, searchResultRows } = useMemo(() => {
     const typedTextRow = rows.find(isTypedTextSourceRow) ?? null
@@ -180,7 +184,7 @@ export function useSmartWorkspaceNameFieldPresentation(
   const isQueryStale =
     !linearUrlIntentOwnsInput && trimmedValue.length > 0 && trimmedDebouncedQuery !== trimmedValue
   // Why: unambiguous refs highlight their source row instead of the typed-text fallback.
-  const sourceIntent = useMemo<'github' | 'gitlab' | 'linear' | 'jira' | null>(() => {
+  const sourceIntent = useMemo<SmartWorkspaceSourceIntent>(() => {
     if (!isSmartWorkspaceSourceQueryWithinLimit(value)) {
       return null
     }
@@ -190,6 +194,9 @@ export function useSmartWorkspaceNameFieldPresentation(
     }
     if (jiraSource.intent) {
       return 'jira'
+    }
+    if (rows.some((row) => row.kind === 'youtrack')) {
+      return 'youtrack'
     }
     if (/^#\d+$/.test(trimmed) || parseGitHubIssueOrPRLink(trimmed) !== null) {
       return 'github'

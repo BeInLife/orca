@@ -17,6 +17,7 @@ import { useSmartWorkspaceGithubSearch } from './use-smart-workspace-github-sear
 import { useSmartWorkspaceGitlabSearch } from './use-smart-workspace-gitlab-search'
 import { useSmartWorkspaceNameFieldPresentation } from './use-smart-workspace-name-field-presentation'
 import { useSmartWorkspaceSecondarySearches } from './use-smart-workspace-secondary-searches'
+import { useYouTrackStore } from '@/components/youtrack/youtrack-store'
 
 export function useSmartWorkspaceNameFieldController({
   jiraSourceContext = null,
@@ -127,6 +128,7 @@ export function useSmartWorkspaceNameFieldController({
     linearQuery
   })
   const actions = useSmartWorkspaceNameFieldActions(foundation, presentation)
+  const youtrackConnected = useYouTrackStore((state) => state.status.connected)
   const copy = getSmartWorkspaceNameFieldCopy({
     repoBackedSourcesDisabled,
     linearAvailable: foundation.linearAvailable,
@@ -134,7 +136,8 @@ export function useSmartWorkspaceNameFieldController({
     crossRepoSwitchTarget,
     disabled,
     disabledPlaceholder: props.disabledPlaceholder,
-    mode: foundation.mode
+    mode: foundation.mode,
+    youtrackConnected
   })
 
   return {
