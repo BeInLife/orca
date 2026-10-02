@@ -9,6 +9,11 @@ import {
 import { REMOTE_RPC_MAX_CONTENT_BYTES } from '../../../shared/remote-rpc-content-budget'
 import { WEBSOCKET_TRANSPORT_MAX_MESSAGE_BYTES } from '../../runtime/rpc/websocket-transport-limits'
 import { updateSettings, type SettingsMutationOperations } from './settings-update'
+import {
+  CreateAgentSessionParams,
+  MAX_PROMPT_BYTES as CREATE_MAX_PROMPT_BYTES
+} from '../../../shared/rpc-contract/agent-session-params'
+import { MAX_PROMPT_BYTES as STRUCTURED_MAX_PROMPT_BYTES } from '../../../shared/rpc-contract/structured-agent-session-params'
 
 function makeOperations(): SettingsMutationOperations {
   return {
@@ -52,19 +57,44 @@ describe('updateSettings terminalQuickCommands', () => {
           agentCommand('review', 'x'.repeat(MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH + 1))
         ]
       })
-    ).toThrow(/"review" is 100,001 characters/)
+    ).toThrow(/"review" is 40,001 characters/)
     expect(operations.scheduleSave).not.toHaveBeenCalled()
   })
 
   it('refuses a list too large for one paired reply', () => {
-    // Forty prompts of 2-byte characters at the cap total about 8 MB of JSON.
+    // Forty prompts of 3-byte characters at the cap total about 4.8 MB of JSON.
     const commands = Array.from({ length: MAX_QUICK_COMMANDS }, (_, index) =>
-      agentCommand(`c${index}`, 'é'.repeat(MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH))
+      agentCommand(`c${index}`, '界'.repeat(MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH))
     )
 
     expect(() => updateSettings(makeOperations(), { terminalQuickCommands: commands })).toThrow(
       /Shorten or remove a prompt/
     )
+  })
+})
+
+describe('the quick-command storage bound against every prompt limit on the run path', () => {
+  // The worst character for each limit: a C0 control escapes to 6 bytes of JSON, CJK is 3 of UTF-8.
+  const worstForJson = '\u0001'.repeat(MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH)
+  const worstForUtf8 = '界'.repeat(MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH)
+
+  it('fits a structured chat message, which caps the JSON of its blocks', () => {
+    const blocks = [{ type: 'text', text: worstForJson }]
+    expect(Buffer.byteLength(JSON.stringify(blocks), 'utf8')).toBeLessThanOrEqual(
+      STRUCTURED_MAX_PROMPT_BYTES
+    )
+  })
+
+  it('fits a paired create, which caps the prompt in UTF-8 bytes', () => {
+    expect(Buffer.byteLength(worstForUtf8, 'utf8')).toBeLessThanOrEqual(CREATE_MAX_PROMPT_BYTES)
+    expect(
+      CreateAgentSessionParams.safeParse({
+        clientOperationId: `${Date.now()}-0123456789abcdef0123456789abcdef`,
+        worktree: 'id:worktree-1',
+        agent: 'claude',
+        prompt: worstForUtf8
+      }).success
+    ).toBe(true)
   })
 })
 

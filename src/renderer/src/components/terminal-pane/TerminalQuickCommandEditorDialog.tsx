@@ -13,7 +13,7 @@ export function TerminalQuickCommandEditorDialog({
   command: TerminalQuickCommand
   hostId: ExecutionHostId
   onOpenChange: (open: boolean) => void
-  onSave: (command: TerminalQuickCommand) => void
+  onSave: (command: TerminalQuickCommand) => Promise<boolean>
 }): React.JSX.Element {
   const repos = useAppStore((store) => store.repos)
   const agentPromptMaxLength = useAppStore((store) =>

@@ -119,11 +119,8 @@ export function TabBarQuickCommandsButton({
     })
   }
 
-  const handleSaveCommand = (next: TerminalQuickCommand): void => {
-    if (editor) {
-      void useAppStore.getState().upsertTerminalQuickCommand(editor.hostId, next)
-    }
-  }
+  const handleSaveCommand = async (next: TerminalQuickCommand): Promise<boolean> =>
+    editor ? await useAppStore.getState().upsertTerminalQuickCommand(editor.hostId, next) : false
 
   const handleDeleteCommand = async (entry: HostedTerminalQuickCommand): Promise<void> => {
     const { command } = entry

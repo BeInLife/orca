@@ -17,7 +17,8 @@ async function renderDialog(
   props: {
     defaultAdvancedOpen?: boolean
     agentPromptMaxLength?: number
-    onSave?: (command: TerminalQuickCommand) => void
+    onSave?: (command: TerminalQuickCommand) => Promise<boolean> | boolean
+    onOpenChange?: (open: boolean) => void
   } = {}
 ): Promise<void> {
   const container = document.createElement('div')
@@ -34,8 +35,8 @@ async function renderDialog(
         repos={[]}
         defaultAdvancedOpen={props.defaultAdvancedOpen}
         agentPromptMaxLength={props.agentPromptMaxLength}
-        onOpenChange={vi.fn()}
-        onSave={props.onSave ?? vi.fn()}
+        onOpenChange={props.onOpenChange ?? vi.fn()}
+        onSave={props.onSave ?? vi.fn(() => true)}
       />
     )
   })
@@ -308,5 +309,41 @@ describe('TerminalQuickCommandDialog animation structure', () => {
     expect(after).toBe(before)
     expect(after?.textContent).toBe(beforeText)
     expect(after?.textContent).not.toMatch(/\d/)
+  })
+
+  it('stays open with the text intact when the host refuses the save', async () => {
+    const prompt = 'Review the change. '.repeat(50)
+    const onOpenChange = vi.fn()
+    let answer: (saved: boolean) => void = () => {}
+    const onSave = vi.fn(() => new Promise<boolean>((resolve) => (answer = resolve)))
+    await renderDialog(
+      {
+        id: 'qc-11',
+        label: 'Review',
+        action: 'agent-prompt',
+        agent: 'claude',
+        prompt,
+        scope: { type: 'global' }
+      },
+      { onSave, onOpenChange }
+    )
+    const textarea = document.body.querySelector('textarea')!
+    const submit = async (): Promise<void> => {
+      await act(async () => {
+        textarea.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true })
+        )
+      })
+    }
+
+    await submit()
+    await act(async () => answer(false))
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    expect(document.body.querySelector('textarea')?.value).toBe(prompt)
+
+    await submit()
+    await act(async () => answer(true))
+    expect(onSave).toHaveBeenCalledTimes(2)
+    expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })

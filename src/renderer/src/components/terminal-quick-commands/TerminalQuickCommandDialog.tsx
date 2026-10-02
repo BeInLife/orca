@@ -49,7 +49,8 @@ type TerminalQuickCommandDialogProps = {
   /** The target host's agent-prompt cap; defaults to this build's. */
   agentPromptMaxLength?: number
   onOpenChange: (open: boolean) => void
-  onSave: (command: TerminalQuickCommand) => void
+  /** Resolves whether the save landed; the dialog closes only then, so a refusal keeps the text. */
+  onSave: (command: TerminalQuickCommand) => Promise<boolean> | boolean
 }
 
 const EMPTY_REPOS: Pick<Repo, 'id' | 'displayName' | 'path' | 'badgeColor'>[] = []
@@ -80,6 +81,7 @@ export function TerminalQuickCommandDialog({
     getAgentCatalog().find((entry) => supportsTerminalAgentQuickCommand(entry.id))?.id ?? 'claude'
   const [draft, setDraft] = useState<TerminalQuickCommand>(command)
   const wasOpenRef = useRef(open)
+  const savingRef = useRef(false)
   const syncedCommandRef = useRef(command)
   const draftMemoryRef = useRef<ReturnType<typeof createTerminalQuickCommandDialogDraftMemory>>(
     undefined!
@@ -142,7 +144,10 @@ export function TerminalQuickCommandDialog({
     )
   }
 
-  const saveDraft = (): void => {
+  const saveDraft = async (): Promise<void> => {
+    if (savingRef.current) {
+      return
+    }
     const next: TerminalQuickCommand = isTerminalAgentQuickCommand(draft)
       ? {
           id: draft.id,
@@ -169,8 +174,14 @@ export function TerminalQuickCommandDialog({
     ) {
       return
     }
-    onSave(next)
-    onOpenChange(false)
+    savingRef.current = true
+    try {
+      if (await onSave(next)) {
+        onOpenChange(false)
+      }
+    } finally {
+      savingRef.current = false
+    }
   }
 
   const canSave =
@@ -223,7 +234,7 @@ export function TerminalQuickCommandDialog({
             }
             if (isScreenSubmitShortcut(event) && canSave) {
               event.preventDefault()
-              saveDraft()
+              void saveDraft()
             }
           }}
         >
@@ -271,7 +282,7 @@ export function TerminalQuickCommandDialog({
           canSave={canSave}
           submitShortcutLabel={submitShortcutLabel}
           onCancel={() => onOpenChange(false)}
-          onSave={saveDraft}
+          onSave={() => void saveDraft()}
         />
       </DialogContent>
     </Dialog>

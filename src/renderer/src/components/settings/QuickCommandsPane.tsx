@@ -239,7 +239,7 @@ export function QuickCommandsPane({
     setScopeSelection(null)
   }
 
-  const saveCommand = (next: TerminalQuickCommand): void => {
+  const saveCommand = async (next: TerminalQuickCommand): Promise<boolean> => {
     if (
       !editor ||
       !isQuickCommandEditorHostCurrent(
@@ -250,10 +250,10 @@ export function QuickCommandsPane({
       )
     ) {
       setEditor(null)
-      return
+      return false
     }
     useAppStore.getState().recordFeatureInteraction('quick-commands')
-    void useAppStore.getState().upsertTerminalQuickCommand(editor.hostId, next)
+    return await useAppStore.getState().upsertTerminalQuickCommand(editor.hostId, next)
   }
 
   const removeCommand = async (command: TerminalQuickCommand): Promise<void> => {

@@ -14,10 +14,10 @@ export const MAX_QUICK_COMMAND_ID_LENGTH = 80
 export const MAX_QUICK_COMMAND_LABEL_LENGTH = 80
 export const MAX_QUICK_COMMAND_REPO_ID_LENGTH = 200
 export const MAX_QUICK_COMMAND_TERMINAL_TEXT_LENGTH = 4000
-// Why 100,000: one saved command must fit a paired client's 1 MiB inbound frame even at JSON's
-// 6x escape worst case under base64 encryption (~786 KB of plaintext). The value is part of the
-// `terminal.quick-commands.long-prompts.v1` contract; changing it needs a new capability.
-export const MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH = 100_000
+// Why 40,000: a saved prompt must run on every path, and the tightest is a chat message, capped at
+// 256 KiB of JSON where one character can escape to 6 bytes; a paired create's 256 KiB of UTF-8 and
+// one save's 1 MiB inbound frame follow. Part of `terminal.quick-commands.long-prompts.v1`.
+export const MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH = 40_000
 // Why: builds before long-prompt support refuse longer prompts on save and reject a whole list
 // holding one; this is only for talking to those builds.
 export const LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH = 6000
