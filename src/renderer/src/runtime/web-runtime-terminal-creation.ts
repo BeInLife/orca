@@ -6,15 +6,17 @@ import {
 import { createWebRuntimeSessionTerminalResult } from './web-runtime-terminal-create-operation'
 import { toWebTerminalSurfaceTabId } from './web-terminal-surface-id'
 import { callRuntimeRpc } from './runtime-rpc-client'
+import { HOST_LAUNCH_PROMPT_OBSERVE_WINDOW_MS } from '../../../shared/host-launch-prompt-budget'
 import type {
   CreateWebRuntimeSessionTerminalArgs,
   WebRuntimeTerminalCreateOutcome
 } from './web-runtime-session-types'
 
-// Why: the host's own delivery ends within 60 s of readiness plus the paste's ingest; this only
-// bounds how long one observation may sit on a dead connection before it is asked again.
-const LAUNCH_PROMPT_OBSERVE_TIMEOUT_MS = 120_000
 const LAUNCH_PROMPT_OBSERVE_ATTEMPTS = 3
+// Mirrors the host's `launch_prompt_unknown` refusal; this module cannot import main.
+const LAUNCH_PROMPT_UNKNOWN_ERROR = 'launch_prompt_unknown'
+// Why the host's whole window: a delivery waiting out a startup dialog is slow, not failed.
+const LAUNCH_PROMPT_OBSERVE_RPC_TIMEOUT_MS = HOST_LAUNCH_PROMPT_OBSERVE_WINDOW_MS + 15_000
 
 export async function createWebRuntimeSessionTerminal(
   args: CreateWebRuntimeSessionTerminalArgs
@@ -33,21 +35,28 @@ export async function createWebRuntimeAgentSessionTerminalWithPrompt(
 ): Promise<{
   outcome: WebRuntimeTerminalCreateOutcome
   promptDelivered: Promise<boolean | null>
+  hostTabId?: string
 }> {
   const created = await createWebRuntimeSessionTerminalResult(args)
   if (created.outcome.status === 'failed') {
     return { outcome: created.outcome, promptDelivered: Promise.resolve(false) }
   }
+  const hostTabId = created.hostTabId ? { hostTabId: created.hostTabId } : {}
   const followUp = created.launchPromptFollowUp
   if (followUp?.kind === 'host-delivering') {
     return {
       outcome: created.outcome,
-      promptDelivered: observeHostLaunchPrompt(followUp.environmentId, followUp.terminal)
+      promptDelivered: observeHostLaunchPrompt(followUp.environmentId, followUp.terminal),
+      ...hostTabId
     }
+  }
+  if (followUp?.kind === 'unknown') {
+    return { outcome: created.outcome, promptDelivered: Promise.resolve(null), ...hostTabId }
   }
   if (followUp?.kind === 'client-paste') {
     return {
       outcome: created.outcome,
+      ...hostTabId,
       promptDelivered: created.hostTabId
         ? deliverLaunchPromptToAgentTab({
             tabId: toWebTerminalSurfaceTabId(created.hostTabId),
@@ -59,7 +68,7 @@ export async function createWebRuntimeAgentSessionTerminalWithPrompt(
         : Promise.resolve(false)
     }
   }
-  return { outcome: created.outcome, promptDelivered: Promise.resolve(true) }
+  return { outcome: created.outcome, promptDelivered: Promise.resolve(true), ...hostTabId }
 }
 
 /**
@@ -75,16 +84,20 @@ async function observeHostLaunchPrompt(
       const result = await callRuntimeRpc<{ wait?: { launchPrompt?: { outcome?: unknown } } }>(
         { kind: 'environment', environmentId },
         'terminal.wait',
-        { terminal, for: 'launch-prompt' },
-        { timeoutMs: LAUNCH_PROMPT_OBSERVE_TIMEOUT_MS }
+        { terminal, for: 'launch-prompt', timeoutMs: HOST_LAUNCH_PROMPT_OBSERVE_WINDOW_MS },
+        { timeoutMs: LAUNCH_PROMPT_OBSERVE_RPC_TIMEOUT_MS }
       )
       const outcome = result.wait?.launchPrompt?.outcome
       if (outcome === 'handed-to-terminal' || outcome === 'not-delivered') {
         return outcome === 'handed-to-terminal'
       }
       return null
-    } catch {
-      // Observing never writes, so asking again cannot deliver the prompt twice.
+    } catch (error) {
+      // The host holds no record (it restarted, or it expired): unknown, so asking again is moot.
+      if (error instanceof Error && error.message.includes(LAUNCH_PROMPT_UNKNOWN_ERROR)) {
+        return null
+      }
+      // Otherwise observing never writes, so asking again cannot deliver the prompt twice.
     }
   }
   return null
@@ -100,6 +113,7 @@ export async function createWebRuntimeAgentSessionTerminal(
 ): Promise<{
   outcome: WebRuntimeTerminalCreateOutcome
   promptDelivered: boolean
+  hostTabId?: string
 }> {
   const created = await createWebRuntimeSessionTerminalResult(args)
   if (created.outcome.status === 'failed' || !created.hostTabId) {
@@ -113,7 +127,7 @@ export async function createWebRuntimeAgentSessionTerminal(
     submit: args.submitPrompt,
     forcePaste: args.forcePromptPaste
   })
-  return { outcome: created.outcome, promptDelivered }
+  return { outcome: created.outcome, promptDelivered, hostTabId: created.hostTabId }
 }
 
 /**

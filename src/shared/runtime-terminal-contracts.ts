@@ -1,3 +1,4 @@
+import type { TerminalLaunchPromptDisposal } from './agent-launch-intent'
 import type {
   AgentProviderSessionMetadata,
   SleepingAgentLaunchConfig
@@ -338,13 +339,22 @@ export type RuntimeTerminalWaitBlockedReason =
 
 export type RuntimeTerminalWait = {
   handle: string
-  /** `launch-prompt` reads how a host-owned launch prompt delivery ended; it never writes. */
-  condition: RuntimeTerminalWaitCondition | 'launch-prompt'
+  condition: RuntimeTerminalWaitCondition
   satisfied: boolean
   status: RuntimeTerminalState
   exitCode: number | null
   exitCause?: TerminalExitCause
   blockedReason?: RuntimeTerminalWaitBlockedReason
-  /** Set only for `launch-prompt`, in `agent.launch`'s receipt vocabulary. */
-  launchPrompt?: { outcome: 'handed-to-terminal' | 'not-delivered' }
 }
+
+/** `terminal.wait` with `for: 'launch-prompt'`: how a host-owned launch prompt delivery ended. It
+ *  only reads the host's record, so it reports no terminal state of its own. */
+export type RuntimeTerminalLaunchPromptWait = {
+  handle: string
+  condition: 'launch-prompt'
+  satisfied: boolean
+  launchPrompt: TerminalLaunchPromptDisposal
+}
+
+/** What `terminal.wait` answers, per condition. */
+export type RuntimeTerminalWaitReply = RuntimeTerminalWait | RuntimeTerminalLaunchPromptWait

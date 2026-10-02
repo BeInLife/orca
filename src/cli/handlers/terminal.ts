@@ -6,7 +6,7 @@ import type {
   RuntimeTerminalRename,
   RuntimeTerminalShow,
   RuntimeTerminalSplit,
-  RuntimeTerminalWait
+  RuntimeTerminalWaitReply
 } from '../../shared/runtime-types'
 import type { CommandHandler } from '../dispatch'
 import { shouldUseRendererBackedInteractiveTerminal } from '../codex-command-classification'
@@ -116,7 +116,7 @@ export const TERMINAL_HANDLERS: Record<string, CommandHandler> = {
   'terminal send': terminalSendHandler,
   'terminal wait': async ({ flags, client, cwd, json }) => {
     const timeoutMs = getOptionalPositiveIntegerFlag(flags, 'timeout-ms')
-    const result = await client.call<{ wait: RuntimeTerminalWait }>(
+    const result = await client.call<{ wait: RuntimeTerminalWaitReply }>(
       'terminal.wait',
       {
         terminal: await getTerminalHandle(flags, cwd, client),

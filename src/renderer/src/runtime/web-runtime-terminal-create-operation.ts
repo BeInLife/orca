@@ -18,7 +18,6 @@ import {
   legacyAgentCreateTerminalParams,
   legacyAgentLaunchFor
 } from './web-runtime-agent-session-create-params'
-import type { AgentSessionLaunchPromptReceipt } from '../../../shared/agent-session-host-authority'
 import { toRuntimeWorktreeSelector } from './runtime-worktree-selector'
 import { resolveWebRuntimeSessionEnvironmentId } from './web-runtime-session-workspace-routing'
 import { recordWebSessionFocusIntent } from './web-session-focus-intent'
@@ -48,7 +47,8 @@ import {
 } from './web-runtime-session-workspace-selection'
 import {
   createdTerminalLeafId,
-  readCreatedAgentTerminalIdentity
+  readCreatedAgentTerminalIdentity,
+  type LaunchPromptReplyState
 } from './web-runtime-terminal-identity'
 import { settleWebRuntimeTerminalPlacement } from './web-runtime-terminal-placement-settlement'
 
@@ -157,7 +157,7 @@ export async function createWebRuntimeSessionTerminalResult(
       const legacyLaunch = legacyAgentLaunchFor(args)
       const created = await runRemoteAgentSessionLaunch<{
         terminal: CreatedAgentTerminalIdentity
-        launchPrompt?: AgentSessionLaunchPromptReceipt
+        launchPrompt?: LaunchPromptReplyState
         clientOwesLaunchPrompt?: boolean
       }>({
         environmentId,

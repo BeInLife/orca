@@ -13,6 +13,7 @@ import {
   stubTerminalCreateEnvironment
 } from './web-runtime-session-test-harness'
 import { LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH } from '../../../shared/terminal-quick-commands'
+import { HOST_LAUNCH_PROMPT_OBSERVE_WINDOW_MS } from '../../../shared/host-launch-prompt-budget'
 
 const mocks = vi.hoisted(() => ({
   getState: vi.fn(),
@@ -170,8 +171,13 @@ describe('a paired launch whose host delivers the prompt itself', () => {
     expect(calls(runtimeCall, 'terminal.createAgentSession')[0]?.params).not.toHaveProperty(
       'deferOversizedPrompt'
     )
+    // Watches for the host's whole window, so a delivery waiting out a dialog is not a failure.
     expect(calls(runtimeCall, 'terminal.wait').map((request) => request.params)).toEqual([
-      expect.objectContaining({ terminal: 'term_long', for: 'launch-prompt' })
+      expect.objectContaining({
+        terminal: 'term_long',
+        for: 'launch-prompt',
+        timeoutMs: HOST_LAUNCH_PROMPT_OBSERVE_WINDOW_MS
+      })
     ])
     expect(calls(runtimeCall, 'terminal.send')).toEqual([])
     expect(mocks.deliverLaunchPromptToAgentTab).not.toHaveBeenCalled()
@@ -204,6 +210,30 @@ describe('a paired launch whose host delivers the prompt itself', () => {
     await expect(
       (await createWebRuntimeAgentSessionTerminalWithPrompt(LAUNCH)).promptDelivered
     ).resolves.toBeNull()
+  })
+
+  it('says unknown, without asking again, when the host has no record of the delivery', async () => {
+    const unknown = (): never => {
+      throw new Error('launch_prompt_unknown')
+    }
+    const runtimeCall = stubHost({
+      launchPrompt: { outcome: 'pending' },
+      waitReplies: [unknown, unknown, unknown]
+    })
+
+    await expect(
+      (await createWebRuntimeAgentSessionTerminalWithPrompt(LAUNCH)).promptDelivered
+    ).resolves.toBeNull()
+    expect(calls(runtimeCall, 'terminal.wait')).toHaveLength(1)
+  })
+
+  it('reads a launch prompt state it does not recognise as unknown, never as delivered', async () => {
+    const runtimeCall = stubHost({ launchPrompt: { outcome: 'queued-somewhere-new' } })
+
+    await expect(
+      (await createWebRuntimeAgentSessionTerminalWithPrompt(LAUNCH)).promptDelivered
+    ).resolves.toBeNull()
+    expect(calls(runtimeCall, 'terminal.wait')).toEqual([])
   })
 
   it('does nothing more when the command carried the prompt, as an older host always does', async () => {

@@ -122,7 +122,9 @@ export async function executeAgentLaunch(
         intent,
         placed.promptRodeLaunchCommand
           ? HANDED_TO_TERMINAL
-          : await deliverTerminalLaunchPrompt(execution, placed.startupTerminalHandle)
+          : await deliverTerminalLaunchPrompt(execution, placed.startupTerminalHandle, {
+              startedByThisLaunch: true
+            })
       )
     }
   }

@@ -30,6 +30,7 @@ vi.mock('../../../runtime/rpc/methods/agent-launch-terminal-prompt', () => ({
 }))
 
 import { installPtyWriteIpcHandlers } from './write'
+import { HOST_LAUNCH_PROMPT_DIALOG_DEADLINE_MS } from '../../../../shared/host-launch-prompt-budget'
 
 describe('pty:deliverAgentLaunchPrompt', () => {
   const resolveTerminalHandleForPty = vi.fn()
@@ -56,8 +57,15 @@ describe('pty:deliverAgentLaunchPrompt', () => {
     expect(mocks.deliverTerminalAgentLaunchPrompt).toHaveBeenCalledWith({
       runtime,
       handle: 'term_local',
-      text: 'long prompt'
+      text: 'long prompt',
+      startupDialogDeadlineMs: HOST_LAUNCH_PROMPT_DIALOG_DEADLINE_MS
     })
+
+    // The same terminal keeps one record, so asking again cannot paste twice.
+    await expect(
+      invoke({ fromMainWindow: true }, { id: 'pty-1', text: 'long prompt' })
+    ).resolves.toEqual({ outcome: 'handed-to-terminal' })
+    expect(mocks.deliverTerminalAgentLaunchPrompt).toHaveBeenCalledOnce()
   })
 
   it('answers not-delivered without writing for another window or an unknown PTY', async () => {

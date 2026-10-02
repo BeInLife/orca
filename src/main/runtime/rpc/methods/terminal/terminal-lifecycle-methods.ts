@@ -19,13 +19,13 @@ import {
 } from './unary-schemas'
 import { TerminalResizeForClient } from './stream-schemas'
 import { hostLaunchPromptDeliveriesFor } from '../../../host-launch-prompt-deliveries'
-import type { RuntimeTerminalWait } from '../../../../../shared/runtime-types'
+import type { RuntimeTerminalWaitReply } from '../../../../../shared/runtime-types'
 
 export const TERMINAL_LIFECYCLE_METHODS = [
   defineMethod({
     name: 'terminal.wait',
     params: TerminalWait,
-    handler: async (params, { runtime, signal }): Promise<{ wait: RuntimeTerminalWait }> => {
+    handler: async (params, { runtime, signal }): Promise<{ wait: RuntimeTerminalWaitReply }> => {
       if (params.for !== 'launch-prompt') {
         return {
           wait: await runtime.waitForTerminal(params.terminal, {
@@ -36,17 +36,15 @@ export const TERMINAL_LIFECYCLE_METHODS = [
         }
       }
       // Read-only and retry-safe: it never writes, only reports the host's own delivery.
-      const launchPrompt = await hostLaunchPromptDeliveriesFor(runtime).observe(
-        params.terminal,
-        signal
-      )
+      const launchPrompt = await hostLaunchPromptDeliveriesFor(runtime).observe(params.terminal, {
+        signal,
+        ...(params.timeoutMs !== undefined ? { timeoutMs: params.timeoutMs } : {})
+      })
       return {
         wait: {
           handle: params.terminal,
           condition: 'launch-prompt',
           satisfied: launchPrompt.outcome === 'handed-to-terminal',
-          status: 'unknown',
-          exitCode: null,
           launchPrompt
         }
       }

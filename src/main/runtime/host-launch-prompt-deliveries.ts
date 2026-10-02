@@ -1,12 +1,16 @@
-import type { AgentSessionLaunchPromptDisposal } from '../../shared/agent-session-host-authority'
+import type { TerminalLaunchPromptDisposal } from '../../shared/agent-launch-intent'
+import { AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS } from '../../shared/agent-session-host-authority'
 
-// Why: long enough for a client that reconnects to read the outcome, short enough that a settled
-// record does not outlive any reason to ask; the delivery itself ends within its own budget.
-const SETTLED_RECORD_RETENTION_MS = 10 * 60_000
+// Why the create ledger's age: a replayed create re-sends its `pending` reply for that long, so the
+// record it points at must still answer; it holds only an outcome, never the prompt.
+const SETTLED_RECORD_RETENTION_MS = AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS
+
+/** No record: never owed a prompt, expired, or lost to a host restart. Unknown, never a failure. */
+export const LAUNCH_PROMPT_UNKNOWN_ERROR = 'launch_prompt_unknown'
 
 type Delivery = {
-  settled: Promise<AgentSessionLaunchPromptDisposal>
-  outcome: AgentSessionLaunchPromptDisposal | null
+  settled: Promise<TerminalLaunchPromptDisposal>
+  outcome: TerminalLaunchPromptDisposal | null
 }
 
 /**
@@ -14,7 +18,7 @@ type Delivery = {
  *
  * The host starts the write itself, so it survives the client that asked for the launch; a client
  * only observes how it ended. One record per handle makes a retried or reclaimed create a no-op.
- * A record ends with its delivery (written, readiness timeout, or terminal gone), then expires.
+ * A record ends with its delivery (written, a deadline, or the terminal gone), then expires.
  */
 export class HostLaunchPromptDeliveries {
   private readonly deliveries = new Map<string, Delivery>()
@@ -27,10 +31,10 @@ export class HostLaunchPromptDeliveries {
     const delivery: Delivery = {
       outcome: null,
       settled: deliver().then(
-        (delivered): AgentSessionLaunchPromptDisposal => ({
+        (delivered): TerminalLaunchPromptDisposal => ({
           outcome: delivered ? 'handed-to-terminal' : 'not-delivered'
         }),
-        (): AgentSessionLaunchPromptDisposal => ({ outcome: 'not-delivered' })
+        (): TerminalLaunchPromptDisposal => ({ outcome: 'not-delivered' })
       )
     }
     this.deliveries.set(handle, delivery)
@@ -47,29 +51,45 @@ export class HostLaunchPromptDeliveries {
 
   /**
    * How this terminal's launch prompt delivery ended, waiting for it if it has not. Read-only.
-   * A handle with no record — never owed one, or a host restart dropped it — under-claims as
-   * `not-delivered`, the same rule `agent.launch` receipts follow.
+   * Rejects with `launch_prompt_unknown` when there is no record, and `timeout` past `timeoutMs`.
    */
-  async observe(handle: string, signal?: AbortSignal): Promise<AgentSessionLaunchPromptDisposal> {
+  async observe(
+    handle: string,
+    options: { signal?: AbortSignal; timeoutMs?: number } = {}
+  ): Promise<TerminalLaunchPromptDisposal> {
     const delivery = this.deliveries.get(handle)
     if (!delivery) {
-      return { outcome: 'not-delivered' }
+      throw new Error(LAUNCH_PROMPT_UNKNOWN_ERROR)
     }
     if (delivery.outcome) {
       return delivery.outcome
     }
-    if (!signal) {
-      return await delivery.settled
-    }
+    const { signal, timeoutMs } = options
     return await new Promise((resolve, reject) => {
-      const onAbort = (): void => reject(new Error('request_aborted'))
-      if (signal.aborted) {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const finish = (): void => {
+        signal?.removeEventListener('abort', onAbort)
+        if (timer !== undefined) {
+          clearTimeout(timer)
+        }
+      }
+      const onAbort = (): void => {
+        finish()
+        reject(new Error('request_aborted'))
+      }
+      if (signal?.aborted) {
         onAbort()
         return
       }
-      signal.addEventListener('abort', onAbort, { once: true })
+      signal?.addEventListener('abort', onAbort, { once: true })
+      if (typeof timeoutMs === 'number' && timeoutMs > 0) {
+        timer = setTimeout(() => {
+          finish()
+          reject(new Error('timeout'))
+        }, timeoutMs)
+      }
       void delivery.settled.then((outcome) => {
-        signal.removeEventListener('abort', onAbort)
+        finish()
         resolve(outcome)
       })
     })

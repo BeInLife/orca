@@ -2,8 +2,10 @@ import type { PtyRendererDelivery } from '../session'
 import { getPtyIpc } from '../../pty-host-bindings'
 import type { OrcaRuntimeService } from '../../../runtime/orca-runtime'
 import { createPtyWriteInput } from './write-input'
-import type { AgentSessionLaunchPromptDisposal } from '../../../../shared/agent-session-host-authority'
+import type { TerminalLaunchPromptDisposal } from '../../../../shared/agent-launch-intent'
 import { deliverTerminalAgentLaunchPrompt } from '../../../runtime/rpc/methods/agent-launch-terminal-prompt'
+import { hostLaunchPromptDeliveriesFor } from '../../../runtime/host-launch-prompt-deliveries'
+import { HOST_LAUNCH_PROMPT_DIALOG_DEADLINE_MS } from '../../../../shared/host-launch-prompt-budget'
 
 function isLaunchPromptPayload(args: unknown): args is { id: string; text: string } {
   return (
@@ -56,16 +58,27 @@ export function installPtyWriteIpcHandlers(deps: {
 
   ipcMain.handle(
     'pty:deliverAgentLaunchPrompt',
-    async (event, args: unknown): Promise<AgentSessionLaunchPromptDisposal> => {
+    async (event, args: unknown): Promise<TerminalLaunchPromptDisposal> => {
       if (!isPtyWriteEventFromMainWindow(event) || !runtime || !isLaunchPromptPayload(args)) {
         return { outcome: 'not-delivered' }
       }
       const handle = runtime.resolveTerminalHandleForPty(args.id)
-      // Same writer agent.launch and paired hosts use, so a local launch gets no weaker paste.
-      const delivered = handle
-        ? await deliverTerminalAgentLaunchPrompt({ runtime, handle, text: args.text })
-        : false
-      return { outcome: delivered ? 'handed-to-terminal' : 'not-delivered' }
+      if (!handle) {
+        return { outcome: 'not-delivered' }
+      }
+      // Same writer and record as a paired create: a repeated request cannot paste twice, and a
+      // person can answer a startup dialog before the prompt lands.
+      const deliveries = hostLaunchPromptDeliveriesFor(runtime)
+      const text = args.text
+      deliveries.start(handle, () =>
+        deliverTerminalAgentLaunchPrompt({
+          runtime,
+          handle,
+          text,
+          startupDialogDeadlineMs: HOST_LAUNCH_PROMPT_DIALOG_DEADLINE_MS
+        })
+      )
+      return await deliveries.observe(handle)
     }
   )
 

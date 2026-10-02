@@ -55,6 +55,8 @@ export type CreatedWebRuntimeSessionTerminal = {
   launchPromptFollowUp?:
     | { kind: 'host-delivering'; environmentId: string; terminal: string }
     | { kind: 'client-paste' }
+    /** The reply said something this build cannot read; nothing is claimed either way. */
+    | { kind: 'unknown' }
 }
 
 export type CreatedAgentTerminalIdentity = Pick<RuntimeTerminalCreate, 'tabId' | 'paneKey'> & {

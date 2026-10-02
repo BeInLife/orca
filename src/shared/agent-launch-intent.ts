@@ -155,6 +155,19 @@ export type AgentLaunchPromptDisposal =
   /** Not delivered by this call; the caller still owns the text. */
   | { outcome: 'not-delivered' }
 
+/** The receipt arms a terminal can produce, for callers whose surface is always a terminal. */
+export type TerminalLaunchPromptDisposal = Extract<
+  AgentLaunchPromptDisposal,
+  { outcome: 'handed-to-terminal' | 'not-delivered' }
+>
+
+/**
+ * A reply state, never a receipt: the host owns the write and has not finished it. The caller
+ * learns the final `TerminalLaunchPromptDisposal` from `terminal.wait` with `for: 'launch-prompt'`,
+ * so unlike a "maybe" arm it always resolves to an answer the caller can act on.
+ */
+export type PendingLaunchPrompt = { outcome: 'pending' }
+
 export type AgentLaunchPromptReceipt = {
   delivery: AgentLaunchPromptDelivery
 } & AgentLaunchPromptDisposal

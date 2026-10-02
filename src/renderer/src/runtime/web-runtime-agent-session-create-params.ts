@@ -1,4 +1,4 @@
-import type { AgentSessionLaunchPromptReceipt } from '../../../shared/agent-session-host-authority'
+import type { LaunchPromptReplyState } from './web-runtime-terminal-identity'
 import { LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH } from '../../../shared/terminal-quick-commands'
 import type { TuiAgent } from '../../../shared/tui-agent'
 import { toRuntimeWorktreeSelector } from './runtime-worktree-selector'
@@ -69,15 +69,18 @@ export function legacyAgentLaunchFor(args: CreateWebRuntimeSessionTerminalArgs):
 export function launchPromptFollowUpOf(
   environmentId: string,
   terminal: { handle?: string },
-  launchPrompt: AgentSessionLaunchPromptReceipt | undefined,
+  launchPrompt: LaunchPromptReplyState | undefined,
   clientOwesLaunchPrompt: boolean
 ): CreatedWebRuntimeSessionTerminal['launchPromptFollowUp'] {
   if (clientOwesLaunchPrompt) {
     return { kind: 'client-paste' }
   }
-  return launchPrompt?.outcome === 'pending' && terminal.handle
+  if (!launchPrompt) {
+    return undefined
+  }
+  return launchPrompt.outcome === 'pending' && terminal.handle
     ? { kind: 'host-delivering', environmentId, terminal: terminal.handle }
-    : undefined
+    : { kind: 'unknown' }
 }
 
 /** `session.tabs.createTerminal` params for an agent launch on a host without agent-session creates. */

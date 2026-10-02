@@ -23,6 +23,7 @@ import {
 } from './agent-session-create-launch-plan'
 import { deliverTerminalAgentLaunchPrompt } from './rpc/methods/agent-launch-terminal-prompt'
 import { hostLaunchPromptDeliveriesFor } from './host-launch-prompt-deliveries'
+import { HOST_LAUNCH_PROMPT_DIALOG_DEADLINE_MS } from '../../shared/host-launch-prompt-budget'
 import type { RuntimeTerminalCreate } from '../../shared/runtime-types'
 import type {
   AgentSessionCreateOperation,
@@ -235,6 +236,8 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
       if (owedLaunchPrompt) {
         this.startHostLaunchPromptDelivery(terminal.handle, owedLaunchPrompt)
       }
+      // Kept only so a reclaimed spawn still gets it; this one spawned, so the record owns it now.
+      reclaim.owedLaunchPrompt = undefined
       return {
         terminal,
         disposition: 'created',
@@ -278,7 +281,13 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
    *  client that asked: it ends on delivery, the readiness timeout, or the terminal going away. */
   private startHostLaunchPromptDelivery(handle: string, text: string): void {
     hostLaunchPromptDeliveriesFor(this).start(handle, () =>
-      deliverTerminalAgentLaunchPrompt({ runtime: this, handle, text })
+      deliverTerminalAgentLaunchPrompt({
+        runtime: this,
+        handle,
+        text,
+        // The reply already returned, so a person can answer a startup dialog before it lands.
+        startupDialogDeadlineMs: HOST_LAUNCH_PROMPT_DIALOG_DEADLINE_MS
+      })
     )
   }
 

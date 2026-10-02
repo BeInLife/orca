@@ -571,7 +571,11 @@ describe('createWebRuntimeSessionTerminal', () => {
         submitPrompt: true,
         forcePromptPaste: true
       })
-    ).resolves.toEqual({ outcome: { status: 'created' }, promptDelivered: true })
+    ).resolves.toEqual({
+      outcome: { status: 'created' },
+      promptDelivered: true,
+      hostTabId: 'host-tab-2'
+    })
 
     const createRequest = runtimeCall.mock.calls.find(
       ([request]) => request.method === 'terminal.createAgentSession'

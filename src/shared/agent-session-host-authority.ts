@@ -1,3 +1,4 @@
+import type { PendingLaunchPrompt } from './agent-launch-intent'
 import {
   hasUnsafeProviderSessionIdChars,
   isResumableTuiAgent,
@@ -143,16 +144,10 @@ export type RuntimeCreateAgentSessionRequest = {
 export type RuntimeCreateAgentSessionResult = {
   terminal: RuntimeTerminalCreate
   disposition: 'created' | 'replayed'
-  /** Present only when the launch command did not carry `prompt`; older hosts never send it. */
-  launchPrompt?: AgentSessionLaunchPromptReceipt
+  /** Present only when the launch command did not carry `prompt`, which the host then writes into
+   *  the agent once its TUI is ready; older hosts never send it. */
+  launchPrompt?: PendingLaunchPrompt
 }
-
-/** A create's prompt its launch command could not carry: the host writes it into the agent once
- *  its TUI is ready, and `terminal.wait` with `for: 'launch-prompt'` reports how that ended. */
-export type AgentSessionLaunchPromptReceipt = { outcome: 'pending' }
-
-/** How a host-owned launch prompt delivery ended, in `agent.launch`'s receipt vocabulary. */
-export type AgentSessionLaunchPromptDisposal = { outcome: 'handed-to-terminal' | 'not-delivered' }
 
 export type RuntimeAgentSessionRpcCaller = {
   clientId?: string

@@ -7,11 +7,11 @@
  * Mobile, the CLI and orchestration got an agent and no prompt. The host owns the PTY, so it can
  * write into one whether or not any window is open on it.
  *
- * This is the half argv cannot serve. An agent whose CLI takes the prompt as an argument gets it on
- * the launch command instead (`agentPromptRidesLaunchCommand`), where it is in the process's argv
- * at exec time and no readiness race exists. What reaches here is a `stdin-after-start` agent,
- * whose CLI accepts no such argument, and a reused terminal, whose process was already running
- * before this launch existed.
+ * This is the half argv cannot serve. A prompt the built launch command can carry rides it instead,
+ * in the process's argv at exec time with no readiness race. What reaches here is a prompt the
+ * command could not carry — the agent takes no prompt argument, or the text is too long for the
+ * host's command line — and a reused terminal, whose process was already running before this launch
+ * existed. `agent.launch`, `terminal.createAgentSession` and local desktop launches all write here.
  *
  * Nothing here writes to a PTY itself. `sendTerminalAgentPrompt` is the runtime's one agent-prompt
  * writer: it frames the text as a bracketed paste so multi-line and special-character content is
@@ -24,9 +24,10 @@
 import { randomUUID } from 'node:crypto'
 import { isAgentPromptStalledError } from '../../agent-prompt-submission-verification'
 import type { OrcaRuntimeService } from '../../orca-runtime'
+import { HOST_LAUNCH_PROMPT_READY_TIMEOUT_MS } from '../../../../shared/host-launch-prompt-budget'
 
-/** The same budget orchestration gives a worker to reach its composer before dispatching to it. */
-const AGENT_READY_TIMEOUT_MS = 60_000
+// How soon a launch held by a startup dialog looks again for the composer.
+const STARTUP_DIALOG_RECHECK_MS = 1_000
 
 type TerminalPromptRuntime = Pick<OrcaRuntimeService, 'waitForTerminal' | 'sendTerminalAgentPrompt'>
 
@@ -48,21 +49,17 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
   runtime: TerminalPromptRuntime
   handle: string
   text: string
+  /**
+   * How long a startup dialog may hold the delivery open while a person answers it. Unset, a dialog
+   * ends the delivery at once — `agent.launch`'s awaited receipt keeps that contract.
+   */
+  startupDialogDeadlineMs?: number
 }): Promise<boolean> {
   if (args.text.trim().length === 0) {
     return false
   }
   try {
-    const wait = await args.runtime.waitForTerminal(args.handle, {
-      condition: 'tui-idle',
-      timeoutMs: AGENT_READY_TIMEOUT_MS
-    })
-    // An unsatisfied wait is a composer that never opened — a trust prompt, an update prompt, a
-    // dead process. Pasting anyway would answer whatever question is on screen with the prompt.
-    if (wait && !wait.satisfied) {
-      console.warn(
-        `[agent-launch] the terminal agent did not become ready (${wait.status}); its launch prompt was not delivered`
-      )
+    if (!(await waitForLaunchComposer(args))) {
       return false
     }
     const sent = await args.runtime.sendTerminalAgentPrompt(args.handle, args.text, {
@@ -86,5 +83,40 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
       error
     )
     return false
+  }
+}
+
+/**
+ * Whether the agent's composer opened. A startup dialog is never pasted into: that would answer
+ * whatever question is on screen with the prompt. With a dialog deadline the wait re-arms while
+ * the dialog is up — answering it repaints the screen, and the next wait sees the composer — and
+ * the composer gets a fresh readiness budget once the dialog is gone.
+ */
+async function waitForLaunchComposer(args: {
+  runtime: TerminalPromptRuntime
+  handle: string
+  startupDialogDeadlineMs?: number
+}): Promise<boolean> {
+  const dialogDeadline = Date.now() + (args.startupDialogDeadlineMs ?? 0)
+  let readyBy = Date.now() + HOST_LAUNCH_PROMPT_READY_TIMEOUT_MS
+  for (;;) {
+    const wait = await args.runtime.waitForTerminal(args.handle, {
+      condition: 'tui-idle',
+      timeoutMs: Math.max(1, readyBy - Date.now())
+    })
+    if (!wait || wait.satisfied) {
+      return true
+    }
+    // Anything but a dialog (an exited agent, a lost terminal) ends the delivery outright.
+    if (!wait.blockedReason || Date.now() >= dialogDeadline) {
+      console.warn(
+        `[agent-launch] the terminal agent did not become ready (${wait.blockedReason ?? wait.status}); its launch prompt was not delivered`
+      )
+      return false
+    }
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(STARTUP_DIALOG_RECHECK_MS, dialogDeadline - Date.now()))
+    )
+    readyBy = Math.max(readyBy, Date.now() + HOST_LAUNCH_PROMPT_READY_TIMEOUT_MS)
   }
 }

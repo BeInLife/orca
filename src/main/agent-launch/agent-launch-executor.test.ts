@@ -334,7 +334,8 @@ describe('delivering a launch prompt to a terminal agent', () => {
     expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
     expect(h.deliverTerminalPrompt).toHaveBeenCalledWith({
       handle: 'term_1',
-      prompt: SUBMIT
+      prompt: SUBMIT,
+      startedByThisLaunch: true
     })
     // The create is handed the text and reports it could not carry it.
     expect(h.createTerminalAgent.mock.calls[0]?.[0]).toMatchObject({
@@ -352,7 +353,11 @@ describe('delivering a launch prompt to a terminal agent', () => {
 
     // Decided by the plan the create built, not by the agent: claude takes argv, but not this text.
     expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
-    expect(h.deliverTerminalPrompt).toHaveBeenCalledWith({ handle: 'term_1', prompt: SUBMIT })
+    expect(h.deliverTerminalPrompt).toHaveBeenCalledWith({
+      handle: 'term_1',
+      prompt: SUBMIT,
+      startedByThisLaunch: true
+    })
   })
 
   it('does not paste a prompt the existing-workspace create carried on its command line', async () => {

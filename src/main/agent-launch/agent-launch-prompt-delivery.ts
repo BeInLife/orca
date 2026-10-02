@@ -12,9 +12,9 @@
  *
  * The argv/PTY fork is not a preference. `argv` exists so multi-line and special-character text
  * reaches a CLI as one argument instead of keystrokes, and it has no readiness race because the
- * text is in the process's arguments at exec time. So it is preferred wherever the agent's CLI
- * takes a prompt argument, and `agentPromptRidesLaunchCommand` — derived from the same injection
- * table `buildAgentStartupPlan` branches on — is the one place that question is asked.
+ * text is in the process's arguments at exec time. So it is preferred wherever the built launch
+ * command can carry it: the agent takes a prompt argument and the text fits the host's command
+ * line. The startup plan decides both, so whether the text rode is read off the create's report.
  */
 
 import type {
@@ -43,7 +43,9 @@ export async function settleLaunchPromptDisposal(
   if (created.promptRodeLaunchCommand) {
     return HANDED_TO_TERMINAL
   }
-  return deliverTerminalLaunchPrompt(execution, created.outcome.handle)
+  return deliverTerminalLaunchPrompt(execution, created.outcome.handle, {
+    startedByThisLaunch: true
+  })
 }
 
 /**
@@ -82,13 +84,18 @@ async function deliverStructuredLaunchPrompt(
  */
 export async function deliverTerminalLaunchPrompt(
   execution: AgentLaunchExecution,
-  handle: string
+  handle: string,
+  options: { startedByThisLaunch?: boolean } = {}
 ): Promise<AgentLaunchPromptDisposal> {
   const { intent, surfaces } = execution
   if (!intent.prompt || intent.prompt.delivery !== 'submit') {
     return NOT_DELIVERED
   }
-  const delivered = await surfaces.deliverTerminalPrompt?.({ handle, prompt: intent.prompt })
+  const delivered = await surfaces.deliverTerminalPrompt?.({
+    handle,
+    prompt: intent.prompt,
+    ...(options.startedByThisLaunch ? { startedByThisLaunch: true } : {})
+  })
   return delivered ? HANDED_TO_TERMINAL : NOT_DELIVERED
 }
 
@@ -129,7 +136,8 @@ export function launchCommandPrompt(
  * carried the text or a PTY write that returned, and everything else under-claims as
  * `not-delivered`. There is deliberately no arm for "maybe" — a caller holding one could neither
  * resend nor drop the text. Dispatch doubt is not this tier's to report: the submission row
- * carries it.
+ * carries it. `terminal.createAgentSession` may reply `PendingLaunchPrompt` instead of waiting, but
+ * that is a reply state whose observation resolves to one of these arms, never a receipt.
  */
 export function promptReceipt(
   intent: AgentLaunchIntent,

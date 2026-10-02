@@ -5,6 +5,7 @@ import { buildAgentDraftLaunchPlan } from '../../shared/tui-agent-startup'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { RpcDispatcher } from './rpc/dispatcher'
 import { TERMINAL_METHODS } from './rpc/methods/terminal'
+import { HOST_LAUNCH_PROMPT_DIALOG_DEADLINE_MS } from '../../shared/host-launch-prompt-budget'
 
 const mocks = vi.hoisted(() => ({ deliverTerminalAgentLaunchPrompt: vi.fn() }))
 
@@ -60,13 +61,17 @@ function stubSpawn(runtime: OrcaRuntimeService) {
   })
 }
 
-async function observeLaunchPrompt(runtime: OrcaRuntimeService, terminal: string) {
+async function observeLaunchPrompt(
+  runtime: OrcaRuntimeService,
+  terminal: string,
+  timeoutMs?: number
+) {
   const dispatcher = new RpcDispatcher({ runtime, methods: TERMINAL_METHODS })
   return await dispatcher.dispatch({
     id: 'wait',
     authToken: 'token',
     method: 'terminal.wait',
-    params: { terminal, for: 'launch-prompt' }
+    params: { terminal, for: 'launch-prompt', ...(timeoutMs ? { timeoutMs } : {}) }
   })
 }
 
@@ -92,7 +97,9 @@ describe('a paired create handed a prompt its launch command cannot carry', () =
     expect(mocks.deliverTerminalAgentLaunchPrompt).toHaveBeenCalledWith({
       runtime,
       handle: 'term_oversized',
-      text: OVERSIZED_PROMPT
+      text: OVERSIZED_PROMPT,
+      // A person may still be answering a startup dialog when the reply has already returned.
+      startupDialogDeadlineMs: HOST_LAUNCH_PROMPT_DIALOG_DEADLINE_MS
     })
 
     const observed = observeLaunchPrompt(runtime, 'term_oversized')
@@ -156,6 +163,50 @@ describe('a paired create handed a prompt its launch command cannot carry', () =
         wait: { condition: 'launch-prompt', launchPrompt: { outcome: 'handed-to-terminal' } }
       }
     })
+  })
+
+  it('reports no record as unknown, never as not delivered', async () => {
+    const runtime = createRuntime()
+
+    const observed = await observeLaunchPrompt(runtime, 'term_never_owed')
+
+    expect(observed.ok).toBe(false)
+    expect(JSON.stringify(observed)).toContain('launch_prompt_unknown')
+  })
+
+  it('answers with the delivery alone, no invented terminal state, and honours timeoutMs', async () => {
+    const runtime = createRuntime()
+    stubSpawn(runtime)
+    mocks.deliverTerminalAgentLaunchPrompt.mockReturnValue(new Promise<boolean>(() => {}))
+    await runtime.createAgentSession(request())
+
+    const timedOut = await observeLaunchPrompt(runtime, 'term_oversized', 50)
+    expect(timedOut.ok).toBe(false)
+    expect(JSON.stringify(timedOut)).toContain('timeout')
+
+    mocks.deliverTerminalAgentLaunchPrompt.mockResolvedValue(true)
+    const other = createRuntime()
+    stubSpawn(other)
+    await other.createAgentSession(request())
+    const settled = await observeLaunchPrompt(other, 'term_oversized')
+    expect(settled).toMatchObject({ ok: true })
+    expect(settled).toHaveProperty('result.wait', {
+      handle: 'term_oversized',
+      condition: 'launch-prompt',
+      satisfied: true,
+      launchPrompt: { outcome: 'handed-to-terminal' }
+    })
+  })
+
+  it('drops the prompt from the create ledger once the spawn has the record', async () => {
+    const runtime = createRuntime()
+    stubSpawn(runtime)
+
+    await runtime.createAgentSession(request())
+
+    const [operation] = Reflect.get(runtime, 'agentSessionCreateOperations').values()
+    expect(operation.reclaim).not.toHaveProperty('owedLaunchPrompt', OVERSIZED_PROMPT)
+    expect(operation.reclaim.owedLaunchPrompt).toBeUndefined()
   })
 
   it('builds a draft exactly as before, on the draft rule, with nothing owed', async () => {

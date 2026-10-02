@@ -3,7 +3,7 @@ import type {
   SleepingAgentLaunchConfig
 } from '../../shared/agent-session-resume'
 import type { StartupCommandDelivery } from '../../shared/codex-startup-delivery'
-import type { AgentSessionLaunchPromptDisposal } from '../../shared/agent-session-host-authority'
+import type { TerminalLaunchPromptDisposal } from '../../shared/agent-launch-intent'
 import type { TerminalInputKind } from '../../shared/terminal-input-kind'
 import type { ProjectExecutionRuntimeResolution } from '../../shared/project-execution-runtime'
 import type { PtyListedSession, PtySessionListScope } from '../../shared/pty-listed-session'
@@ -80,7 +80,7 @@ export type PtyApi = {
   write: (id: string, data: string, inputKind: TerminalInputKind) => void
   writeAccepted: (id: string, data: string, inputKind: TerminalInputKind) => Promise<boolean>
   /** Writes a deferred launch prompt through the host's agent-prompt writer once the TUI is ready. */
-  deliverAgentLaunchPrompt: (id: string, text: string) => Promise<AgentSessionLaunchPromptDisposal>
+  deliverAgentLaunchPrompt: (id: string, text: string) => Promise<TerminalLaunchPromptDisposal>
   onWriteUnavailable?: (callback: (payload: { id: string }) => void) => () => void
   resize: (id: string, cols: number, rows: number) => void
   claimViewport: (id: string, cols: number, rows: number) => void

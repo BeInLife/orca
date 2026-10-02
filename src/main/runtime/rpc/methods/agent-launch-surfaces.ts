@@ -28,6 +28,7 @@ import { structuredCallerFor } from './structured-agent-session-gate'
 import { createStructuredAgentSessionForWorktree } from './structured-agent-session-create'
 import { commitStructuredAgentSessionLaunchPrompt } from './agent-launch-structured-prompt'
 import { deliverTerminalAgentLaunchPrompt } from './agent-launch-terminal-prompt'
+import { hostLaunchPromptDeliveriesFor } from '../../host-launch-prompt-deliveries'
 import { AgentLaunchSessionAlreadyExistsError } from '../../../../shared/agent-launch-session-already-exists'
 import { createStructuredAgentSessionId } from '../../../../shared/structured-agent-session-create'
 import { toAgentLaunchPreferences } from '../../../../shared/agent-launch-preferences'
@@ -147,12 +148,19 @@ export function agentLaunchSurfaceFactory(
         ...(terminal.startupPromptDeferred ? { startupPromptDeferred: true } : {})
       }
     },
-    deliverTerminalPrompt: async ({ handle, prompt }) =>
-      deliverTerminalAgentLaunchPrompt({
-        runtime: context.runtime,
-        handle,
-        text: prompt.text
-      })
+    deliverTerminalPrompt: async ({ handle, prompt, startedByThisLaunch }) => {
+      const deliver = (): Promise<boolean> =>
+        deliverTerminalAgentLaunchPrompt({ runtime: context.runtime, handle, text: prompt.text })
+      if (!startedByThisLaunch) {
+        // A reused terminal takes each launch's text in turn; it owes nothing once per handle.
+        return await deliver()
+      }
+      // The one record a fresh terminal's launch prompt has, whichever entry point started it; the
+      // receipt still waits for it, with agent.launch's own readiness budget.
+      const deliveries = hostLaunchPromptDeliveriesFor(context.runtime)
+      deliveries.start(handle, deliver)
+      return (await deliveries.observe(handle)).outcome === 'handed-to-terminal'
+    }
   }
 }
 

@@ -15,7 +15,7 @@ import type {
   RuntimeTerminalSend,
   RuntimeTerminalShow,
   RuntimeTerminalSplit,
-  RuntimeTerminalWait
+  RuntimeTerminalWaitReply
 } from '../shared/runtime-types'
 
 export function formatTerminalList(
@@ -266,7 +266,15 @@ export function formatTerminalClose(result: { close: RuntimeTerminalClose }): st
   return `Closed terminal ${result.close.handle}.${describePtyStop(result.close)}`
 }
 
-export function formatTerminalWait(result: { wait: RuntimeTerminalWait }): string {
+export function formatTerminalWait(result: { wait: RuntimeTerminalWaitReply }): string {
+  if (result.wait.condition === 'launch-prompt') {
+    return [
+      `handle: ${result.wait.handle}`,
+      `condition: ${result.wait.condition}`,
+      `satisfied: ${result.wait.satisfied}`,
+      `launchPrompt: ${result.wait.launchPrompt.outcome}`
+    ].join('\n')
+  }
   const lines = [
     `handle: ${result.wait.handle}`,
     `condition: ${result.wait.condition}`,
