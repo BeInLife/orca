@@ -104,10 +104,15 @@ async function waitForLaunchComposer(args: {
       condition: 'tui-idle',
       timeoutMs: Math.max(1, readyBy - Date.now())
     })
+    // Why before `satisfied`: a wait on an exited pane re-reads its last screen, which can look ready.
+    if (wait?.status === 'exited') {
+      console.warn('[agent-launch] the terminal agent exited; its launch prompt was not delivered')
+      return false
+    }
     if (!wait || wait.satisfied) {
       return true
     }
-    // Anything but a dialog (an exited agent, a lost terminal) ends the delivery outright.
+    // Only a startup dialog holds the delivery open, and only until its deadline.
     if (!wait.blockedReason || Date.now() >= dialogDeadline) {
       console.warn(
         `[agent-launch] the terminal agent did not become ready (${wait.blockedReason ?? wait.status}); its launch prompt was not delivered`

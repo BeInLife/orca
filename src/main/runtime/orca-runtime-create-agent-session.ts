@@ -278,7 +278,8 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
   }
 
   /** Writes a launch prompt the command could not carry, once per terminal, independent of the
-   *  client that asked: it ends on delivery, the readiness timeout, or the terminal going away. */
+   *  client that asked: it ends on delivery, the readiness timeout, the startup-dialog deadline, or
+   *  the terminal exiting. */
   private startHostLaunchPromptDelivery(handle: string, text: string): void {
     hostLaunchPromptDeliveriesFor(this).start(handle, () =>
       deliverTerminalAgentLaunchPrompt({

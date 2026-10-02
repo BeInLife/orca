@@ -55,7 +55,12 @@ async function paneShowingTheDialog() {
   const send = vi
     .spyOn(pane.runtime, 'sendTerminalAgentPrompt')
     .mockResolvedValue({ handle: pane.handle, accepted: true, bytesWritten: 1 })
-  return { ...pane, send, answerDialog: () => write(answer) }
+  return {
+    ...pane,
+    send,
+    answerDialog: () => write(answer),
+    exitAgent: () => pane.runtime.onPtyExit(TRANSCRIPT_PANE_PTY_ID, 0)
+  }
 }
 
 describe('a host-owned launch prompt held by a startup dialog', () => {
@@ -101,6 +106,48 @@ describe('a host-owned launch prompt held by a startup dialog', () => {
     })
 
     await vi.advanceTimersByTimeAsync(HOST_LAUNCH_PROMPT_DIALOG_DEADLINE_MS + 5_000)
+
+    await expect(delivery).resolves.toBe(false)
+    expect(pane.send).not.toHaveBeenCalled()
+  })
+
+  it('does not paste when the agent exits while the dialog wait is paused', async () => {
+    const pane = await paneShowingTheDialog()
+    const waitForTerminal = pane.runtime.waitForTerminal.bind(pane.runtime)
+    const firstWait = vi.fn()
+    // The agent exits as soon as the first wait reports the dialog, before the re-check runs.
+    vi.spyOn(pane.runtime, 'waitForTerminal').mockImplementationOnce(async (handle, options) => {
+      const wait = await waitForTerminal(handle, options)
+      firstWait(wait)
+      pane.exitAgent()
+      return wait
+    })
+    const delivery = deliverTerminalAgentLaunchPrompt({
+      runtime: pane.runtime,
+      handle: pane.handle,
+      text: 'review the change',
+      startupDialogDeadlineMs: HOST_LAUNCH_PROMPT_DIALOG_DEADLINE_MS
+    })
+    await vi.advanceTimersByTimeAsync(15_000)
+
+    expect(firstWait).toHaveBeenCalledWith(
+      expect.objectContaining({ satisfied: false, blockedReason: 'agent-trust-workspace' })
+    )
+    await expect(delivery).resolves.toBe(false)
+    expect(pane.send).not.toHaveBeenCalled()
+  })
+
+  it('does not paste for agent.launch into an agent that exited after the dialog was answered', async () => {
+    const pane = await paneShowingTheDialog()
+    pane.answerDialog()
+    await vi.advanceTimersByTimeAsync(15_000)
+    pane.exitAgent()
+    const delivery = deliverTerminalAgentLaunchPrompt({
+      runtime: pane.runtime,
+      handle: pane.handle,
+      text: 'review the change'
+    })
+    await vi.advanceTimersByTimeAsync(5_000)
 
     await expect(delivery).resolves.toBe(false)
     expect(pane.send).not.toHaveBeenCalled()
