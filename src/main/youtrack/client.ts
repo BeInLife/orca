@@ -107,6 +107,22 @@ export async function connect(args: YouTrackConnectArgs): Promise<YouTrackConnec
   }
 }
 
+/** Re-verifies the saved token; only runs on an explicit user action. */
+export async function testConnection(): Promise<YouTrackConnectResult> {
+  try {
+    const credentials = getCredentials()
+    const viewer = toYouTrackUser(
+      await youtrackRequest(credentials, `/api/users/me?fields=${VIEWER_FIELDS}`),
+      credentials.baseUrl
+    )
+    return viewer?.login
+      ? { ok: true, viewer }
+      : { ok: false, error: 'YouTrack did not return the current user.' }
+  } catch (error) {
+    return { ok: false, error: errorMessage(error, 'Could not reach YouTrack.') }
+  }
+}
+
 export function disconnect(): void {
   clearSite()
 }

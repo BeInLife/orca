@@ -12,11 +12,11 @@ export function YouTrackSetupSteps(props: {
   visible: boolean
   canHide: boolean
   onToggleVisible: () => void
+  onOpenIntegrations: () => void
 }): React.JSX.Element {
   const [dialogOpen, setDialogOpen] = useState(false)
   const baseUrl = useYouTrackStore((s) => s.status.baseUrl)
   const allowInsecureTls = useYouTrackStore((s) => s.status.allowInsecureTls === true)
-  const disconnect = useYouTrackStore((s) => s.disconnect)
 
   return (
     <>
@@ -43,8 +43,8 @@ export function YouTrackSetupSteps(props: {
           }
           action={
             props.connected ? (
-              <Button type="button" size="sm" variant="outline" onClick={() => void disconnect()}>
-                {translate('youtrack.settings.disconnect', 'Disconnect')}
+              <Button type="button" size="sm" variant="outline" onClick={props.onOpenIntegrations}>
+                {translate('youtrack.settings.manage', 'Manage')}
               </Button>
             ) : (
               <Button type="button" size="sm" onClick={() => setDialogOpen(true)}>
@@ -61,7 +61,7 @@ export function YouTrackSetupSteps(props: {
           onToggleVisible={props.onToggleVisible}
         />
       </ol>
-      <YouTrackConnectDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+      <YouTrackConnectDialog aboveSettings open={dialogOpen} onOpenChange={setDialogOpen} />
     </>
   )
 }

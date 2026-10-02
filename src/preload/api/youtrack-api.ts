@@ -22,6 +22,7 @@ export type YouTrackApi = {
     allowInsecureTls?: boolean
   }) => Promise<YouTrackConnectResult>
   disconnect: () => Promise<void>
+  testConnection: () => Promise<YouTrackConnectResult>
   listIssues: (args?: YouTrackListIssuesArgs) => Promise<YouTrackListIssuesResult>
   getIssue: (args: { idReadable: string }) => Promise<YouTrackIssueResult>
   getComments: (args: { idReadable: string }) => Promise<YouTrackCommentsResult>
