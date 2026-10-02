@@ -79,9 +79,13 @@ export class StructuredAgentSessionEventRecovery {
             return false
           }
         )
+        const reason = `journal sink failure: ${error instanceof Error ? error.message : String(error)}`
         if (!stopped) {
           // The child may still run: it stays, and its stop is owed, never forgotten.
-          recordUnprovenStructuredAgentSessionEndUnderSerialize(this.context, sessionId, child)
+          recordUnprovenStructuredAgentSessionEndUnderSerialize(this.context, sessionId, child, {
+            reason,
+            failure: agentSessionFailureFact('hostFault')
+          })
           return null
         }
         if (!acquisitionGeneration) {
@@ -90,7 +94,7 @@ export class StructuredAgentSessionEventRecovery {
         return {
           type: 'ended',
           sessionId,
-          reason: `journal sink failure: ${error instanceof Error ? error.message : String(error)}`,
+          reason,
           // Orca stopped the provider because its own journal failed.
           failure: agentSessionFailureFact('hostFault'),
           cause: 'unexpected-exit',

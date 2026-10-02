@@ -237,3 +237,42 @@ it("drops an exit from an app-server that is no longer the chat's", async () => 
   expect(resumed.closeCount).toBe(0)
   expect(hostSession()?.child?.generation).toBe('generation-2')
 })
+
+async function faultRows() {
+  await host.flushStreamedEvents(SESSION)
+  return (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
+    item.body.kind === 'status' && item.body.failure?.kind === 'hostFault' ? [item.body.text] : []
+  )
+}
+
+it.each([
+  ['proven at once', false],
+  ['proven only by the late exit', true]
+])('tells why a turn a forced close cut short stopped, its close %s', async (_name, unproven) => {
+  const connection = codex.connections[0]!
+  const old = unproven ? closesOnlyOnceExited(connection) : null
+  const threadId = adapter['sessions'].get(SESSION)!.threadId
+  connection.handlers.onNotification?.('turn/started', { threadId, turn: { id: 'turn-1' } })
+  await host.flushStreamedEvents(SESSION)
+  const sink = host['runtimeState'].eventSinkFor(SESSION).sink
+  vi.spyOn(sink, 'tryAppendItem').mockReturnValueOnce({ accepted: false, reason: 'failed' })
+  connection.handlers.onUnhandledFrame?.('frame:unknown-method', { method: 'mystery/event' })
+  if (old) {
+    await vi.waitFor(() => expect(hostSession()?.owesProviderChildWindDown).toBeDefined())
+    expect(await faultRows()).toEqual([])
+    old.exit()
+  }
+  await vi.waitFor(() => expect(hostSession()?.child).toBeNull())
+  await vi.waitFor(() => expect(hostSession()?.owesProviderChildWindDown).toBeUndefined())
+
+  // The same end reads the same however long its proof took.
+  await vi.waitFor(async () =>
+    expect(await faultRows()).toEqual([
+      "Orca ran into a problem, so this didn't go through. Try again."
+    ])
+  )
+  expect(hostSession()?.lastEndedChild).toMatchObject({
+    cause: 'exit',
+    failure: { kind: 'hostFault' }
+  })
+})

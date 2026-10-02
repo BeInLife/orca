@@ -355,3 +355,65 @@ it('owes the stop of a child a journal sink failure could not prove gone', async
   expect(connection.closeCount).toBeGreaterThan(0)
   host['runtimeState'].eventSinkFor(SESSION)
 })
+
+/** A turn still running when the fault comes. */
+async function turnRunning(connection: FakeConnection): Promise<void> {
+  const text = 'Do a long thing.'
+  await send(text)
+  await eventually(() => expect(wrote(connection, text)).toBe(true))
+  frame(connection, {
+    type: 'system',
+    subtype: 'init',
+    uuid: 'init-1',
+    model: 'claude-sonnet-5',
+    capabilities: CAPABILITIES
+  })
+  const written = connection.sent.at(-1)!
+  frame(connection, { ...written, uuid: written.uuid })
+  frame(connection, {
+    type: 'assistant',
+    uuid: 'leaf-1',
+    parent_tool_use_id: null,
+    message: { id: 'msg-1', role: 'assistant', content: [{ type: 'text', text: 'Working...' }] }
+  })
+  await host.flushStreamedEvents(SESSION)
+}
+
+async function faultRows() {
+  await host.flushStreamedEvents(SESSION)
+  return (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
+    item.body.kind === 'status' && item.body.failure?.kind === 'hostFault' ? [item.body.text] : []
+  )
+}
+
+it.each([
+  ['proven at once', false],
+  ['proven only by the late exit', true]
+])('tells why a turn a journal fault cut short stopped, its close %s', async (_name, unproven) => {
+  const connection = claude.connections[0]!
+  await turnRunning(connection)
+  if (unproven) {
+    closesUnproven(connection)
+  } else {
+    connection.exitVerdict = { root: 'exited', tree: 'exited' }
+  }
+  await faultTheJournal(connection)
+  await adapter.drainObservedExits()
+  await laneDrained()
+  if (unproven) {
+    await eventually(() => expect(hostSession()?.owesProviderChildWindDown).toBeDefined())
+    expect(await faultRows()).toEqual([])
+    exits(connection)
+  }
+  await eventually(() => expect(hostSession()?.child).toBeNull())
+  await eventually(() => expect(hostSession()?.owesProviderChildWindDown).toBeUndefined())
+
+  // The same end reads the same however long its proof took.
+  expect(await faultRows()).toEqual([
+    "Orca ran into a problem, so this didn't go through. Try again."
+  ])
+  expect(hostSession()?.lastEndedChild).toMatchObject({
+    cause: 'exit',
+    failure: { kind: 'hostFault' }
+  })
+})

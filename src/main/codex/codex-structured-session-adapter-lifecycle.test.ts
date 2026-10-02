@@ -196,6 +196,22 @@ describe('CodexStructuredSessionAdapter lifecycle', () => {
     expect(events.filter((event) => event.type === 'ended')).toHaveLength(1)
   })
 
+  it('rejects a message for a connection that broke while the child may still run, without saying Codex stopped', async () => {
+    const codex = fakeCodex()
+    const adapter = await acquired(codex)
+    codex.connections[0].closed = true
+
+    await expect(
+      adapter.dispatch({
+        sessionId: 'session-1',
+        clientMessageId: 'client-1',
+        body: USER_MESSAGE,
+        fence: 7
+      })
+    ).resolves.toMatchObject({ state: 'rejected', rejection: { kind: 'writeFailed' } })
+    expect(codex.connections[0].calls.some((call) => call.method === 'turn/start')).toBe(false)
+  })
+
   it('keeps the live session when a child it already replaced dies', async () => {
     const codex = fakeCodex()
     const events: CodexStructuredSessionEvent[] = []

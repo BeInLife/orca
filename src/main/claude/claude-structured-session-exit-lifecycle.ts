@@ -1,4 +1,8 @@
-import { agentSessionFailureFact, providerDiagnosticOf } from '../../shared/agent-session-failure'
+import {
+  agentSessionFailureFact,
+  providerDiagnosticOf,
+  type SubmissionRejectionFact
+} from '../../shared/agent-session-failure'
 import {
   providerExitObserved,
   providerStartupFailureFact
@@ -19,11 +23,14 @@ import type {
   ClaudeStructuredSessionEvent
 } from './claude-structured-session-state'
 
+export type ClaudeSettledExit = { error: Error; failure: SubmissionRejectionFact }
+
 export type ClaudeExitLifecycle = {
   sessions: Map<string, ClaudeSession>
   exits: Map<string, ClaudeSessionExit>
-  /** A settled exit's diagnostic, kept for a send admitted before the host heard of the exit. */
-  settledExitErrors: Map<string, Error>
+  /** A settled exit's diagnostic and why it ended, kept for a send admitted before the host heard
+   *  of the exit. */
+  settledExits: Map<string, ClaudeSettledExit>
   deps: Pick<ClaudeStructuredSessionAdapterDeps, 'persistHandle' | 'now' | 'onEvent'>
   emit: (session: ClaudeSession, event: ClaudeStructuredSessionEvent) => void
 }
@@ -134,7 +141,7 @@ export function settleClaudeUnexpectedExit(
       return
     }
     exits.delete(sessionId)
-    lifecycle.settledExitErrors.set(sessionId, exit.error)
+    lifecycle.settledExits.set(sessionId, { error: exit.error, failure: claudeExitFailure(exit) })
     const ended: ClaudeStructuredSessionEvent = {
       type: 'ended',
       sessionId,
@@ -158,19 +165,13 @@ export function settleClaudeUnexpectedExit(
 /** A message for a child this adapter no longer serves was never written, so it is rejected with
  *  why that child ended, never left in doubt. */
 export function rejectClaudeDetachedDispatch(
-  lifecycle: Pick<ClaudeExitLifecycle, 'exits' | 'settledExitErrors'>,
+  lifecycle: Pick<ClaudeExitLifecycle, 'exits' | 'settledExits'>,
   sessionId: string
 ): AgentSessionDispatchOutcome {
   const exit = lifecycle.exits.get(sessionId)
-  const settled = lifecycle.settledExitErrors.get(sessionId)
   const failure = exit
     ? claudeExitFailure(exit)
-    : settled && !providerExitObserved(settled)
-      ? agentSessionFailureFact('hostFault')
-      : agentSessionFailureFact(
-          'providerExited',
-          settled ? { detail: providerDiagnosticOf(settled) } : {}
-        )
+    : (lifecycle.settledExits.get(sessionId)?.failure ?? agentSessionFailureFact('providerExited'))
   return { state: 'rejected', ...claudeDispatchRejection(failure) }
 }
 

@@ -33,6 +33,7 @@ import {
 } from './structured-agent-session-provider-child'
 import { releaseStoredStructuredAgentSessionOwner } from './structured-agent-session-lease-release'
 import { settleStructuredAgentSessionDeadGeneration } from './structured-agent-session-dead-generation-settlement'
+import { structuredAgentSessionStopSettlement } from './structured-agent-session-unproven-end'
 import type { StructuredAgentSessionStopCause } from './structured-agent-session-adapter'
 export type { StructuredAgentSessionStopEnding } from './structured-agent-session-host-stop-event'
 import {
@@ -118,7 +119,8 @@ function owedStop(
     generation: owed.generation,
     fence: owed.fence,
     cause,
-    requestedAt: continues ? asked.requestedAt : session.journal.cursor()
+    requestedAt: continues ? asked.requestedAt : session.journal.cursor(),
+    ...(continues && asked.ended ? { ended: asked.ended } : {})
   }
 }
 
@@ -166,13 +168,16 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       : {}),
     // Host state must not disagree with the adapter for the steps in between.
     onProviderChildStopped: (verdict) => {
+      // A reported end the stop only proves ends the child as that end, with its failure.
+      const reported = owed?.ended
       const ended =
         stopping !== null &&
         endProviderChild(session, {
           generation: stopping.generation,
           fence: stopping.fence,
-          cause,
-          reason: ('reason' in ending ? ending.reason : undefined) ?? null,
+          cause: reported ? 'exit' : cause,
+          reason: reported?.reason ?? ('reason' in ending ? ending.reason : undefined) ?? null,
+          ...(reported?.failure ? { failure: reported.failure } : {}),
           duringStartup: stopping.phase === 'starting',
           // A later retry that proves the exit still ends the child at the Stop it finishes.
           ...(owed ? { endedAt: owed.requestedAt } : {}),
@@ -182,7 +187,13 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       if (ended && gaveUp && late) {
         // What waited through the failed passes waited on this exit: it retries the rest now.
         const { generation, fence, cause: lateCause, requestedAt } = late
-        session.owesProviderChildWindDown = { generation, fence, cause: lateCause, requestedAt }
+        session.owesProviderChildWindDown = {
+          generation,
+          fence,
+          cause: lateCause,
+          requestedAt,
+          ...(late.ended ? { ended: late.ended } : {})
+        }
         context.wakeDelivery?.(sessionId)
       }
       context.restartWitness?.stopped(sessionId)
@@ -198,12 +209,16 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
         journal: session.journal,
         sessionId,
         fence,
-        settlementId: `expected-close:${sessionId}:${fence}:${owed?.generation ?? 'unknown'}`,
-        pendingSubmissionReason: 'provider_closed_before_acknowledgement',
         // Only a turn no adapter settled: one with no close, or whose settle threw. Whether it was
         // a person's Stop is its event's to say (`turnEndAfterStop`).
         verdict: { state: 'interrupted', completedAt: context.now() },
-        showUnexpectedExitOutcome: false
+        ...structuredAgentSessionStopSettlement({
+          sessionId,
+          fence,
+          owed,
+          session,
+          record: context.deps.store.getRecord(sessionId)
+        })
       })
       if (!settled.ok) {
         context.deps.logger.warn("settling a closed agent's work failed", {
