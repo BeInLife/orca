@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseYouTrackIssueReference } from './youtrack-issue-reference'
+import { parseYouTrackIssueIdPrefix, parseYouTrackIssueReference } from './youtrack-issue-reference'
 import { buildSmartWorkspaceSourceRows } from './new-workspace/smart-workspace-source-results'
 import type { YouTrackIssue } from './youtrack-types'
 
@@ -17,6 +17,15 @@ describe('parseYouTrackIssueReference', () => {
     expect(parseYouTrackIssueReference(`${BASE}/issue/proj-81`, BASE)).toBe('PROJ-81')
     expect(parseYouTrackIssueReference('https://other.example.com/issue/PROJ-81', BASE)).toBeNull()
     expect(parseYouTrackIssueReference('https://acme.atlassian.net/browse/PROJ-81', BASE)).toBeNull()
+  })
+})
+
+describe('parseYouTrackIssueIdPrefix', () => {
+  it('accepts project prefixes with or without digits', () => {
+    expect(parseYouTrackIssueIdPrefix('proj-')).toBe('PROJ-')
+    expect(parseYouTrackIssueIdPrefix(' proj-8 ')).toBe('PROJ-8')
+    expect(parseYouTrackIssueIdPrefix('proj')).toBeNull()
+    expect(parseYouTrackIssueIdPrefix('fix-login')).toBeNull()
   })
 })
 
@@ -53,12 +62,12 @@ describe('buildSmartWorkspaceSourceRows with a YouTrack issue', () => {
   }
 
   it('puts the resolved issue first in smart mode', () => {
-    const rows = buildSmartWorkspaceSourceRows({ ...base, mode: 'smart', youtrackIssue: issue })
+    const rows = buildSmartWorkspaceSourceRows({ ...base, mode: 'smart', youtrackIssues: [issue] })
     expect(rows.map((row) => row.kind)).toEqual(['youtrack', 'use-name'])
   })
 
   it('leaves other modes alone', () => {
-    const rows = buildSmartWorkspaceSourceRows({ ...base, mode: 'github', youtrackIssue: issue })
+    const rows = buildSmartWorkspaceSourceRows({ ...base, mode: 'github', youtrackIssues: [issue] })
     expect(rows.some((row) => row.kind === 'youtrack')).toBe(false)
   })
 })

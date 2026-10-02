@@ -36,7 +36,7 @@ export function useWorkItemSourcePresentation(
 ) {
   const {
     jiraSource,
-    youtrackIssue,
+    youtrackIssues,
     branches,
     mode,
     branchResultsSource,
@@ -136,7 +136,7 @@ export function useWorkItemSourcePresentation(
       mode,
       resultLimit: RESULT_LIMIT,
       value,
-      youtrackIssue
+      youtrackIssues
     })
     return foundation.typedTextEnabled
       ? results
@@ -162,7 +162,7 @@ export function useWorkItemSourcePresentation(
     mode,
     selectedRepo?.id,
     value,
-    youtrackIssue
+    youtrackIssues
   ])
   const { typedTextActionRow, searchResultRows } = useMemo(() => {
     const typedTextRow = rows.find(isTypedTextSourceRow) ?? null

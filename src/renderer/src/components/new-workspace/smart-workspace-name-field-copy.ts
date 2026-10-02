@@ -50,7 +50,7 @@ export function getSmartWorkspaceNameFieldCopy({
             'Type a name, #1234, GitHub, GitLab, or Jira URL'
           )
   const smartPlaceholder = youtrackConnected
-    ? translate('youtrack.smartField.placeholderSuffix', '{{base}}, or YouTrack ID', {
+    ? translate('youtrack.smartField.placeholderSuffix', '{{base}} or YouTrack ID', {
         base: basePlaceholder
       })
     : basePlaceholder
