@@ -1,6 +1,7 @@
 import type { GitHubWorkItem } from '../github/work-item-types'
 import type { GitLabWorkItem } from '../gitlab-types'
 import type { JiraIssue } from '../jira-types'
+import type { YouTrackIssue } from '../youtrack-types'
 import type { LinearIssue } from '../linear/issue-types'
 import type { LinearCollectionResult } from '../linear/workspace-types'
 import type { BaseRefSearchResult } from '../repo-types'
@@ -27,6 +28,7 @@ export type SmartWorkspaceSourceRow =
   | { kind: 'branch'; value: string; refName: string; localBranchName: string }
   | { kind: 'linear'; value: string; issue: LinearIssue }
   | { kind: 'jira'; value: string; issue: JiraIssue }
+  | { kind: 'youtrack'; value: string; issue: YouTrackIssue }
 
 type LinearIssueSourceInput = LinearIssue[] | LinearCollectionResult<LinearIssue> | null | undefined
 
@@ -220,7 +222,8 @@ export function buildSmartWorkspaceSourceRows({
   linearUrlIntentOwnsResults = false,
   mode,
   resultLimit,
-  value
+  value,
+  youtrackIssue = null
 }: {
   branches: BaseRefSearchResult[]
   githubItems: GitHubWorkItem[]
@@ -237,6 +240,8 @@ export function buildSmartWorkspaceSourceRows({
   mode: SmartNameMode
   resultLimit: number
   value: string
+  /** A YouTrack issue the typed ID or URL resolved to; only confirmed issues get a row. */
+  youtrackIssue?: YouTrackIssue | null
 }): SmartWorkspaceSourceRow[] {
   // Why: a pasted issue URL resolves to exactly one issue — every other source is noise.
   if (jiraIntent) {
@@ -269,6 +274,13 @@ export function buildSmartWorkspaceSourceRows({
   }
   const trimmed = value.trim()
   const nextRows: SmartWorkspaceSourceRow[] = []
+  if (youtrackIssue && mode === 'smart') {
+    nextRows.push({
+      kind: 'youtrack',
+      value: `youtrack-${youtrackIssue.idReadable}`,
+      issue: youtrackIssue
+    })
+  }
   if (trimmed && mode === 'smart') {
     // Why: stable cmdk value — embedding the query remounted the row every keystroke.
     nextRows.push({ kind: 'use-name', value: 'use-name', name: trimmed })

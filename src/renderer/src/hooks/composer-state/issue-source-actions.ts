@@ -34,6 +34,8 @@ type IssueSourceActionsInput = Pick<
 import { useCallback, useMemo } from 'react'
 import type { LinearIssue } from '../../../../shared/linear/issue-types'
 import type { JiraIssue } from '../../../../shared/jira-types'
+import type { YouTrackIssue } from '../../../../shared/youtrack-types'
+import { buildYouTrackLinkedWorkItem } from '@/components/youtrack/youtrack-workspace'
 import {
   toLinearLinkedWorkItem,
   getLinkedItemDisplayName,
@@ -156,9 +158,9 @@ export function useIssueSourceActions(input: IssueSourceActionsInput) {
     ]
   )
 
-  const handleSmartJiraIssueSelect = useCallback(
-    (issue: JiraIssue, sourceContext: TaskSourceContext): void => {
-      const linkedItem: LinkedWorkItemSummary = buildJiraWorkspaceSource(issue)
+  // Why shared: string-keyed issue providers (Jira, YouTrack) link and auto-name identically.
+  const applyIssueSource = useCallback(
+    (linkedItem: LinkedWorkItemSummary, sourceContext: TaskSourceContext | null): void => {
       setLinkedIssue('')
       setLinkedPR(null)
       setLinkedGitLabIssue(null)
@@ -177,7 +179,7 @@ export function useIssueSourceActions(input: IssueSourceActionsInput) {
       const suggestedName =
         getLinkedWorkItemWorkspaceName(linkedItem)?.seedName ??
         getLinkedWorkItemSuggestedName(linkedItem)
-      // Why: the Jira lookup is async, so a name the user typed while it resolved must survive.
+      // Why: issue lookups are async, so a name the user typed while one resolved must survive.
       if (
         suggestedName &&
         shouldApplyWorkspaceSourceAutoName({
@@ -208,6 +210,16 @@ export function useIssueSourceActions(input: IssueSourceActionsInput) {
       setName,
       setPushTarget
     ]
+  )
+
+  const handleSmartJiraIssueSelect = useCallback(
+    (issue: JiraIssue, sourceContext: TaskSourceContext): void =>
+      applyIssueSource(buildJiraWorkspaceSource(issue), sourceContext),
+    [applyIssueSource]
+  )
+  const handleSmartYouTrackIssueSelect = useCallback(
+    (issue: YouTrackIssue): void => applyIssueSource(buildYouTrackLinkedWorkItem(issue), null),
+    [applyIssueSource]
   )
 
   const handleClearSmartNameSelection = useCallback((): void => {
@@ -280,6 +292,7 @@ export function useIssueSourceActions(input: IssueSourceActionsInput) {
   return {
     handleSmartLinearIssueSelect,
     handleSmartJiraIssueSelect,
+    handleSmartYouTrackIssueSelect,
     handleClearSmartNameSelection,
     smartNameSelection
   }
