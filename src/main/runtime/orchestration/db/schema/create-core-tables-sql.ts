@@ -215,11 +215,16 @@ CREATE TABLE IF NOT EXISTS structured_pointer_operations (
 
 -- A chat Dispatch assignee's preamble, owed as its next turn. Kept out of \`messages\` so no mail
 -- reader can see it; whether it may still be sent is derived from its Dispatch's status.
+-- Its send's operation id lives on the row, so it dies with the row and no mail reset touches it.
 CREATE TABLE IF NOT EXISTS dispatch_preamble_turns (
-  dispatch_id   TEXT PRIMARY KEY,
-  body          TEXT NOT NULL,
-  state         TEXT NOT NULL,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  dispatch_id        TEXT PRIMARY KEY,
+  body               TEXT NOT NULL,
+  state              TEXT NOT NULL,
+  session_id         TEXT,
+  operation_id       TEXT,
+  batch_fingerprint  TEXT,
+  minted_at_ms       INTEGER,
+  created_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS worker_terminal_archives (

@@ -60,11 +60,18 @@ let chatTurns: string[]
 let assigneeBusy: boolean
 let terminalPrompts: string[]
 let releaseTerminal: () => void
+/** The host's status feed subscribers: a chat's status change re-checks a waiting start. */
+let statusSubscribers: Set<{ emit: (event: unknown) => void }>
 
 function installHosts(): void {
   chatTurns = []
   assigneeBusy = false
+  statusSubscribers = new Set()
   hostRef.current = {
+    subscribeStatus: (subscriber: { emit: (event: unknown) => void }) => {
+      statusSubscribers.add(subscriber)
+      return () => statusSubscribers.delete(subscriber)
+    },
     deps: {
       store: {
         getRecord: (id: string) => h.records.get(id) ?? null,
@@ -199,7 +206,7 @@ function installTerminal(): void {
   ])
 }
 
-beforeEach(() => {
+function installHarness(): void {
   h = createSessionCallerHarness(hostRef)
   h.records.set(SESSION_Z, sessionRecord(SESSION_Z))
   installHosts()
@@ -211,7 +218,16 @@ beforeEach(() => {
       ReturnType<typeof h.runtime.showManagedTerminalWorkspace>
     >
   )
-})
+}
+
+/** A fresh database and hosts, so the second assignee runs exactly the first one's script. */
+function resetHarness(): void {
+  h.close()
+  vi.restoreAllMocks()
+  installHarness()
+}
+
+beforeEach(installHarness)
 
 afterEach(() => {
   h.close()
@@ -248,19 +264,16 @@ async function runScript(kind: Kind): Promise<Row> {
     expect(id).toBeDefined()
     return String(id)
   })
-  // While the agent is busy, the start is still `starting` and the worker has nothing to read. The
-  // rest of the start window differs by design: a busy terminal is attached after it goes idle,
-  // while a chat is attached first, because its readiness is taking the preamble the lane sends.
-  const shownWhileStarting = await call(SESSION_X, 'orchestration.workerShow', {
+  seen.showWhileStarting = await call(SESSION_X, 'orchestration.workerShow', {
     dispatch: dispatchId
   })
-  seen.workerWhileStarting = isRecord(shownWhileStarting.worker)
-    ? shownWhileStarting.worker.state
-    : undefined
-  seen.mailBeforeTask = (await asWorker(kind, 'orchestration.check', {})).messages
+  seen.checkBeforeTask = await asWorker(kind, 'orchestration.check', {})
 
   assigneeBusy = false
   releaseTerminal()
+  for (const subscriber of statusSubscribers) {
+    subscriber.emit({ type: 'status', session: { sessionId: SESSION_Z, status: 'idle' } })
+  }
   h.runtime.onStructuredSessionStatusForMail({ sessionId: SESSION_Z, status: 'idle' })
   const start = await starting
   const shown = await call(SESSION_X, 'orchestration.workerShow', { dispatch: dispatchId })
@@ -285,8 +298,28 @@ async function runScript(kind: Kind): Promise<Row> {
   return seen
 }
 
+/** A ready worker the coordinator stops before it reports, then releases. */
+async function runStopScript(kind: Kind): Promise<Row> {
+  const address = kind === 'chat' ? CHAT : WORKER_HANDLE
+  await call(SESSION_X, 'orchestration.runCreate', { objective: 'parity' })
+  const taskId = idOf((await call(SESSION_X, 'orchestration.taskCreate', { spec: 'work' })).task)
+  releaseTerminal()
+  const start = await call(SESSION_X, 'orchestration.workerStart', {
+    task: taskId,
+    terminal: address
+  })
+  const dispatchId = String(start.dispatchId)
+  const request = (method: string) =>
+    h.dispatch(orchestrationRequest(method, { dispatch: dispatchId }, { sessionId: SESSION_X }))
+  return {
+    stop: await request('orchestration.workerStop'),
+    show: await request('orchestration.workerShow'),
+    release: await request('orchestration.workerRelease')
+  }
+}
+
 const ID =
-  /\b(ctx|task|run|msg|delivery|wtr|thread)_[0-9a-z]+\b|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/g
+  /\b(ctx|task|run|msg|delivery|wtr|thread)_[0-9a-z]+\b|\brpc-\d+\b|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/g
 
 /** The agent-visible JSON with the name, a chat's self line and every minted id or clock made comparable. */
 function normalize(value: unknown, address: string): unknown {
@@ -315,21 +348,17 @@ function normalize(value: unknown, address: string): unknown {
 }
 
 describe('a terminal assignee and a chat assignee, run through one coordinator script', () => {
+  it('answer a stop and a release before the worker reports the same way', async () => {
+    const terminal = normalize(await runStopScript('terminal'), WORKER_HANDLE)
+    resetHarness()
+    const chat = normalize(await runStopScript('chat'), CHAT)
+
+    expect(chat).toEqual(terminal)
+  })
+
   it('produce the same agent-visible results but for how each is named', async () => {
     const terminal = normalize(await runScript('terminal'), WORKER_HANDLE)
-    h.close()
-    vi.restoreAllMocks()
-    h = createSessionCallerHarness(hostRef)
-    h.records.set(SESSION_Z, sessionRecord(SESSION_Z))
-    installHosts()
-    installTerminal()
-    vi.spyOn(h.runtime, 'getTerminalOrchestrationCliCommand').mockReturnValue('orca')
-    vi.spyOn(h.runtime, 'showManagedTerminalWorkspace').mockResolvedValue(
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: placement reads only the id of an existing workspace.
-      { id: WORKSPACE_X, path: '/work/tree-x' } as Awaited<
-        ReturnType<typeof h.runtime.showManagedTerminalWorkspace>
-      >
-    )
+    resetHarness()
     const chat = normalize(await runScript('chat'), CHAT)
 
     expect(chat).toEqual(terminal)

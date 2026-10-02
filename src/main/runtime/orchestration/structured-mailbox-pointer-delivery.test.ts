@@ -104,7 +104,15 @@ function harness(options: {
   const sendMock = vi.mocked(send)
   const stored = new Map<string, StructuredPointerOperationRow>()
   let preambleRow: DispatchPreambleTurnRow | undefined = options.preamble
-    ? { dispatch_id: 'd1', body: options.preamble, state: 'owed' }
+    ? {
+        dispatch_id: 'd1',
+        body: options.preamble,
+        state: 'owed',
+        session_id: null,
+        operation_id: null,
+        batch_fingerprint: null,
+        minted_at_ms: null
+      }
     : undefined
   const db = {
     getDispatchContextById: () => ({ run_id: 'run_1' }),
@@ -125,6 +133,14 @@ function harness(options: {
       }
       preambleRow = { ...preambleRow, state: 'sending' }
       return true
+    },
+    recordDispatchPreambleTurnOperation: (
+      id: string,
+      operation: Omit<StructuredPointerOperationRow, 'mailbox_handle'>
+    ) => {
+      if (preambleRow?.dispatch_id === id && preambleRow.state !== 'delivered') {
+        preambleRow = { ...preambleRow, ...operation }
+      }
     },
     settleDispatchPreambleTurnSend: (id: string, state: DispatchPreambleTurnRow['state']) => {
       if (preambleRow?.dispatch_id === id) {
@@ -153,6 +169,7 @@ function harness(options: {
     delivery,
     markAsDelivered,
     preambleState: () => preambleRow?.state,
+    preambleOperationId: () => preambleRow?.operation_id ?? null,
     send: sendMock,
     stored,
     setJournal: (next: AgentJournalRenderItem[] | null) => {
@@ -644,6 +661,21 @@ describe("a chat assignee's dispatch preamble", () => {
     h.delivery.onJournalActivity(IDENTITY.sessionId)
     await flush()
     expect(h.send.mock.calls.at(-1)![0].operationId).not.toBe(first)
+  })
+
+  it('keeps its operation id on its own row, never in the mailbox ledger a mail reset clears', async () => {
+    const h = harness({ journal: idleJournal(), preamble: PREAMBLE, dispatchState: 'unknown' })
+    h.delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    const first = h.send.mock.calls[0]![0].operationId
+    expect(h.preambleOperationId()).toBe(first)
+    expect(h.stored.get('dispatch:d1')).toBeUndefined()
+
+    // A mail reset clears the ledger, and the preamble still replays under its own id.
+    h.stored.clear()
+    h.delivery.onJournalActivity(IDENTITY.sessionId)
+    await flush()
+    expect(h.send.mock.calls.map(([input]) => input.operationId)).toEqual([first, first])
   })
 
   it('waits out a running turn like any mail', async () => {

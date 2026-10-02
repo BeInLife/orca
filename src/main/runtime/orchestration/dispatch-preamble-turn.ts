@@ -11,10 +11,9 @@
  */
 
 import type { OrcaRuntimeService } from '../orca-runtime'
-import { AGENT_PROMPT_EFFECT_TIMEOUT_MS } from '../../../shared/orchestration-timing-budgets'
 import type { OrchestrationDb } from './db'
 
-// No event announces a delivered turn, so worker-start polls its one row, bounded by its budget.
+// No event announces a delivered row, so worker-start polls it, bounded by the observation budget.
 const PREAMBLE_TURN_POLL_MS = 250
 
 export function queueDispatchPreambleTurn(
@@ -27,42 +26,21 @@ export function queueDispatchPreambleTurn(
   runtime.deliverPendingMessagesForHandle(`dispatch:${dispatchId}`)
 }
 
-export type DispatchPreambleTurnSettlement = 'delivered' | 'withdrawn' | 'in_doubt'
-
-/**
- * worker-start's wait for a chat to take its preamble, under the budget a terminal gets to go idle.
- * Past it the turn is withdrawn when the chat certainly never got it, and the start fails as a busy
- * terminal's does. A send in flight then is waited out; one whose outcome is unknown may have
- * reached the chat, so it is reported in doubt, never as a failure that leaves a working chat.
- */
-export async function settleDispatchPreambleTurn(
+/** Whether the chat's provider accepted the preamble as a turn within `timeoutMs`. */
+export async function awaitDispatchPreambleTurnDelivered(
   db: OrchestrationDb,
   dispatchId: string,
   timeoutMs: number
-): Promise<DispatchPreambleTurnSettlement> {
+): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
-  const sendDeadline = deadline + AGENT_PROMPT_EFFECT_TIMEOUT_MS
   for (;;) {
-    const state = db.getDispatchPreambleTurn(dispatchId)?.state
-    if (state === 'delivered') {
-      return 'delivered'
+    if (db.getDispatchPreambleTurn(dispatchId)?.state === 'delivered') {
+      return true
     }
-    if (state === undefined) {
-      return 'withdrawn'
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) {
+      return false
     }
-    const now = Date.now()
-    if (now >= deadline) {
-      if (db.withdrawOwedDispatchPreambleTurn(dispatchId)) {
-        return 'withdrawn'
-      }
-      const settled = db.getDispatchPreambleTurn(dispatchId)?.state
-      if (settled === 'delivered') {
-        return 'delivered'
-      }
-      if (settled === 'in_doubt' || now >= sendDeadline) {
-        return 'in_doubt'
-      }
-    }
-    await new Promise((resolve) => setTimeout(resolve, PREAMBLE_TURN_POLL_MS))
+    await new Promise((resolve) => setTimeout(resolve, Math.min(PREAMBLE_TURN_POLL_MS, remaining)))
   }
 }

@@ -4,6 +4,7 @@
  * host-verified session as its proof of identity.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as TimingBudgets from '../../../shared/orchestration-timing-budgets'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import { formatOrcaSessionAddress } from '../../../shared/orca-session-address'
 import { testOrcaSessionId } from '../../../shared/orca-session-address-test-fixture'
@@ -32,6 +33,11 @@ const hostRef = vi.hoisted((): { current: unknown } => ({ current: null }))
 vi.mock('../../native-chat/agent-session-wire/structured-agent-session-registry', () => ({
   getStructuredAgentSessionHost: () => hostRef.current
 }))
+// A short observation budget, so a preamble the chat does not take is seen to time out.
+vi.mock('../../../shared/orchestration-timing-budgets', async (importOriginal) => ({
+  ...(await importOriginal<typeof TimingBudgets>()),
+  AGENT_PROMPT_EFFECT_TIMEOUT_MS: 300
+}))
 
 type Row = Record<string, unknown>
 
@@ -43,6 +49,8 @@ let h: SessionCallerHarness
 /** Turns the chat host accepted, per session. */
 let turns: { sessionId: string; text: string }[]
 let busy: Set<string>
+/** Sessions holding a question only a person can answer. */
+let pendingPrompt: Set<string>
 /** Sessions whose provider dies on every turn it is started for. */
 let providerDies: Set<string>
 /** Every provider start a send caused, as the host's operation ledger records it. */
@@ -60,6 +68,8 @@ let closedTabs: Set<string>
 let journalReads: string[]
 /** Set to hold every provider send until it is released with its verdict. */
 let heldSends: ((state: 'accepted' | 'pending') => void)[] | null
+/** The host's status feed subscribers: a status change is what re-checks a waiting start. */
+let statusSubscribers: Set<{ emit: (event: unknown) => void }>
 
 function recordSubmission(sessionId: string, clientMessageId: string, dispatchState: string): void {
   const recorded = submissions.get(sessionId) ?? []
@@ -71,6 +81,7 @@ function recordSubmission(sessionId: string, clientMessageId: string, dispatchSt
 function installChatHost(): void {
   turns = []
   busy = new Set()
+  pendingPrompt = new Set()
   providerDies = new Set()
   starts = []
   ledger = new Map()
@@ -79,7 +90,12 @@ function installChatHost(): void {
   closedTabs = new Set()
   journalReads = []
   heldSends = null
+  statusSubscribers = new Set()
   hostRef.current = {
+    subscribeStatus: (subscriber: { emit: (event: unknown) => void }) => {
+      statusSubscribers.add(subscriber)
+      return () => statusSubscribers.delete(subscriber)
+    },
     deps: {
       store: {
         getRecord: (id: string) => h.records.get(id) ?? null,
@@ -98,21 +114,36 @@ function installChatHost(): void {
     journalSnapshot: async (id: string) => {
       journalReads.push(id)
       return {
-        items: busy.has(id)
+        items: pendingPrompt.has(id)
           ? [
               {
-                itemId: 'running',
+                itemId: 'question',
                 revision: 1,
                 observedAt: 1,
                 sequence: 1,
                 body: {
-                  kind: 'status',
-                  text: 'working',
-                  turnLifecycle: { turnId: 't', state: 'running' }
+                  kind: 'question',
+                  question: 'which?',
+                  options: [],
+                  resolution: { state: 'pending' }
                 }
               }
             ]
-          : [],
+          : busy.has(id)
+            ? [
+                {
+                  itemId: 'running',
+                  revision: 1,
+                  observedAt: 1,
+                  sequence: 1,
+                  body: {
+                    kind: 'status',
+                    text: 'working',
+                    turnLifecycle: { turnId: 't', state: 'running' }
+                  }
+                }
+              ]
+            : [],
         submissions: submissions.get(id) ?? []
       }
     },
@@ -171,6 +202,15 @@ function installChatHost(): void {
       return { ok: true, value: { clientMessageId: operationId, submission: { dispatchState } } }
     }
   }
+}
+
+/** The chat's turn ends: the host publishes its status, which reaches the runtime and the feed. */
+function chatGoesIdle(sessionId: string): void {
+  busy.delete(sessionId)
+  for (const subscriber of statusSubscribers) {
+    subscriber.emit({ type: 'status', session: { sessionId, status: 'idle' } })
+  }
+  h.runtime.onStructuredSessionStatusForMail({ sessionId, status: 'idle' })
 }
 
 beforeEach(() => {
@@ -573,51 +613,75 @@ describe('worker-start --terminal orca_session_id:<chat>', () => {
     void taskId
   })
 
-  it('waits out a busy chat within --timeout-ms, then reports it ready', async () => {
+  it('waits out a busy chat within --timeout-ms, attaching it only once it can take the turn', async () => {
     busy.add(SESSION_Z)
     const starting = startOnChat(ADDRESS_Z, 5_000)
     await new Promise((resolve) => setTimeout(resolve, 300))
     expect(turns).toEqual([])
+    // Nothing is attached while it waits: the chat holds no Dispatch yet.
+    expect(h.db.getActiveDispatchForIdentity(ADDRESS_Z)).toBeUndefined()
 
-    busy.delete(SESSION_Z)
-    h.runtime.onStructuredSessionStatusForMail({ sessionId: SESSION_Z, status: 'idle' })
+    chatGoesIdle(SESSION_Z)
     const receipt = resultOf((await starting).response)
     expect(receipt).toMatchObject({ state: 'ready', turnStart: 'observed' })
     expect(turns).toHaveLength(1)
   })
 
-  it('fails a chat still busy past --timeout-ms as a busy terminal fails, delivering nothing', async () => {
+  it('fails a chat still busy past --timeout-ms as a busy terminal fails, attaching nothing', async () => {
     busy.add(SESSION_Z)
-    const receipt = resultOf((await startOnChat(ADDRESS_Z, 300)).response)
+    const { runId } = await coordinatorTask()
+    // Mail a same-Run peer sends during the window stays the chat's own direct mail.
+    await as(SESSION_Y, 'orchestration.send', { to: ADDRESS_Z, subject: 'note for Z', run: runId })
+    const starting = startOnChat(ADDRESS_Z, 300)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    // A check the chat runs mid-turn sees no Dispatch it was never told about.
+    const midCheck = await as(SESSION_Z, 'orchestration.check', { peek: true })
+    expect(midCheck).not.toHaveProperty('dispatchId', expect.any(String))
+    const receipt = resultOf((await starting).response)
     const dispatchId = String(receipt.dispatchId)
     expect(receipt).toMatchObject({
       state: 'failed',
       failedStage: 'agent_readiness',
       lastError: 'Agent did not become ready (running).'
     })
-    expect(h.db.getDispatchContextById(dispatchId)?.status).toBe('failed')
+    expect(h.db.getDispatchContextById(dispatchId)).toMatchObject({
+      status: 'failed',
+      assignee_handle: null
+    })
     expect(h.db.getDispatchPreambleTurn(dispatchId)).toBeUndefined()
+    expect(h.db.getStructuredPointerOperation(`dispatch:${dispatchId}`)).toBeUndefined()
 
-    busy.delete(SESSION_Z)
-    h.runtime.onStructuredSessionStatusForMail({ sessionId: SESSION_Z, status: 'idle' })
-    h.runtime.deliverPendingMessagesForHandle(`dispatch:${dispatchId}`)
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    expect(turns).toEqual([])
+    // The chat goes on as it was: its mail is pointed and its own check reads it.
+    chatGoesIdle(SESSION_Z)
+    await vi.waitFor(() => expect(turns).toHaveLength(1))
+    expect(turns[0]!.text).toMatch(/orchestration message/)
+    expect(await call(SESSION_Z, 'orchestration.check', {})).toMatchObject({
+      ok: true,
+      result: { messages: [expect.objectContaining({ subject: 'note for Z' })] }
+    })
   })
 
-  it('waits out a send in flight at the deadline, and reports the turn it became', async () => {
+  it("names what held the chat when it cannot take the turn, as a terminal's wait status does", async () => {
+    pendingPrompt.add(SESSION_Z)
+    const receipt = resultOf((await startOnChat(ADDRESS_Z, 300)).response)
+    expect(receipt).toMatchObject({
+      state: 'failed',
+      lastError: 'Agent did not become ready (waiting for a person to answer a prompt).'
+    })
+  })
+
+  it('reports ready when the chat takes the preamble while the start observes it', async () => {
     heldSends = []
-    const starting = startOnChat(ADDRESS_Z, 300)
+    const starting = startOnChat(ADDRESS_Z, 5_000)
     await vi.waitFor(() => expect(heldSends).toHaveLength(1))
-    await new Promise((resolve) => setTimeout(resolve, 600))
     heldSends[0]!('accepted')
     const receipt = resultOf((await starting).response)
     expect(receipt).toMatchObject({ state: 'ready', turnStart: 'observed' })
   })
 
-  it('reports a send whose outcome is unknown at the deadline as in doubt, never failed', async () => {
+  it('reports a preamble the chat has not taken within observation as outcome_unknown', async () => {
     heldSends = []
-    const starting = startOnChat(ADDRESS_Z, 300)
+    const starting = startOnChat(ADDRESS_Z, 5_000)
     await vi.waitFor(() => expect(heldSends).toHaveLength(1))
     heldSends[0]!('pending')
     const receipt = resultOf((await starting).response)
@@ -625,7 +689,7 @@ describe('worker-start --terminal orca_session_id:<chat>', () => {
     expect(receipt).toMatchObject({
       state: 'outcome_unknown',
       turnStart: 'unobserved',
-      lastError: expect.stringContaining('whether the chat took it could not be confirmed'),
+      lastError: expect.stringContaining('owed to the chat as its next turn'),
       nextCommands: [
         `orca orchestration worker-show --dispatch ${dispatchId} --json`,
         `orca orchestration worker-abandon --dispatch ${dispatchId} --json`

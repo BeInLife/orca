@@ -1,4 +1,5 @@
 import type { OrchestrationDb } from '../orchestration-db'
+import type { StructuredPointerOperationRow } from '../messages/structured-pointer-operation-store'
 
 /**
  * A chat assignee's dispatch preamble, owed as its next turn: one row per Dispatch, never in
@@ -16,6 +17,11 @@ export type DispatchPreambleTurnRow = {
   dispatch_id: string
   body: string
   state: DispatchPreambleTurnState
+  /** The live operation id of its send, as the mail ledger keeps one per mailbox; null unsent. */
+  session_id: string | null
+  operation_id: string | null
+  batch_fingerprint: string | null
+  minted_at_ms: number | null
 }
 
 export function putDispatchPreambleTurn(
@@ -37,7 +43,10 @@ export function getDispatchPreambleTurn(
 ): DispatchPreambleTurnRow | undefined {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the SELECT names exactly the row's columns.
   return this.db
-    .prepare('SELECT dispatch_id, body, state FROM dispatch_preamble_turns WHERE dispatch_id = ?')
+    .prepare(
+      `SELECT dispatch_id, body, state, session_id, operation_id, batch_fingerprint, minted_at_ms
+         FROM dispatch_preamble_turns WHERE dispatch_id = ?`
+    )
     .get(dispatchId) as DispatchPreambleTurnRow | undefined
 }
 
@@ -66,16 +75,25 @@ export function settleDispatchPreambleTurnSend(
     .run(state, dispatchId)
 }
 
-/** Removes a turn the chat certainly never got; false when it was sent, or may have been. */
-export function withdrawOwedDispatchPreambleTurn(
+/** Mints the send's operation id onto the row; a row already gone or delivered keeps nothing. */
+export function recordDispatchPreambleTurnOperation(
   this: OrchestrationDb,
-  dispatchId: string
-): boolean {
-  return (
-    this.db
-      .prepare(`DELETE FROM dispatch_preamble_turns WHERE dispatch_id = ? AND state = 'owed'`)
-      .run(dispatchId).changes === 1
-  )
+  dispatchId: string,
+  operation: Omit<StructuredPointerOperationRow, 'mailbox_handle'>
+): void {
+  this.db
+    .prepare(
+      `UPDATE dispatch_preamble_turns
+          SET session_id = ?, operation_id = ?, batch_fingerprint = ?, minted_at_ms = ?
+        WHERE dispatch_id = ? AND state != 'delivered'`
+    )
+    .run(
+      operation.session_id,
+      operation.operation_id,
+      operation.batch_fingerprint,
+      operation.minted_at_ms,
+      dispatchId
+    )
 }
 
 /** Dispatch mailboxes whose active Dispatch still owes its chat the preamble. */
@@ -96,7 +114,7 @@ export type DispatchPreambleTurnStoreMethods = {
   getDispatchPreambleTurn: typeof getDispatchPreambleTurn
   claimDispatchPreambleTurnSend: typeof claimDispatchPreambleTurnSend
   settleDispatchPreambleTurnSend: typeof settleDispatchPreambleTurnSend
-  withdrawOwedDispatchPreambleTurn: typeof withdrawOwedDispatchPreambleTurn
+  recordDispatchPreambleTurnOperation: typeof recordDispatchPreambleTurnOperation
   getOwedDispatchPreambleMailboxes: typeof getOwedDispatchPreambleMailboxes
 }
 
@@ -106,7 +124,7 @@ export function attachDispatchPreambleTurnStore(ctor: { prototype: object }): vo
     getDispatchPreambleTurn,
     claimDispatchPreambleTurnSend,
     settleDispatchPreambleTurnSend,
-    withdrawOwedDispatchPreambleTurn,
+    recordDispatchPreambleTurnOperation,
     getOwedDispatchPreambleMailboxes
   })
 }

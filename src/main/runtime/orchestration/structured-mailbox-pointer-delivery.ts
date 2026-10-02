@@ -13,9 +13,9 @@
  *
  * A chat assignee's owed dispatch preamble (`dispatch_preamble_turns`) is not mail: it is the turn a
  * PTY assignee would have typed into its pane. Its Dispatch mailbox sends it first, alone and as its
- * own body, under the same operation ledger: its batch identity names the Dispatch
- * (`dispatch_preamble:<id>`), so a retry or replay of it reuses its id and starts nothing, and no
- * mail batch can share it. Mail waits behind it.
+ * own body, under the same operation-id rules as mail, but with the id kept on its own row: a retry
+ * or replay reuses it and starts nothing, it dies with the row, and no mail batch or mail reset can
+ * touch it. Mail waits behind it.
  */
 
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
@@ -28,6 +28,7 @@ import {
 } from './mailbox-pointer-eligibility'
 import {
   resolveStructuredPointerOperation,
+  type StructuredPointerLedger,
   type StructuredPointerSubmission
 } from './structured-pointer-operation-id'
 import {
@@ -57,6 +58,8 @@ type StructuredPointerPayload = {
   /** Right before the send: false when what it stands for may no longer be sent. */
   claim: () => boolean
   settle: (outcome: 'delivered' | 'not-delivered' | 'in-doubt') => void
+  /** Where its operation id lives; absent for mail, whose id is the mailbox's ledger row. */
+  ledger?: StructuredPointerLedger
 }
 
 type ParkedPointerDelivery = {
@@ -186,6 +189,18 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       await this.attemptOnce(db, mailboxHandle, target, reservedTypes, {
         text: preamble.body,
         batchIds: [`dispatch_preamble:${target.dispatchId}`],
+        ledger: {
+          stored: preamble.operation_id
+            ? {
+                mailbox_handle: mailboxHandle,
+                session_id: preamble.session_id ?? '',
+                operation_id: preamble.operation_id,
+                batch_fingerprint: preamble.batch_fingerprint ?? '',
+                minted_at_ms: preamble.minted_at_ms ?? 0
+              }
+            : undefined,
+          put: (row) => db.recordDispatchPreambleTurnOperation(preamble.dispatch_id, row)
+        },
         claim: () => db.claimDispatchPreambleTurnSend(preamble.dispatch_id),
         settle: (outcome) =>
           db.settleDispatchPreambleTurnSend(
@@ -272,12 +287,13 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       body,
       messageIds: payload.batchIds,
       submissions: session?.submissions ?? [],
-      sentByThisProcess: this.sentOperationIds.get(mailboxHandle)
+      sentByThisProcess: this.sentOperationIds.get(mailboxHandle),
+      ...(payload.ledger ? { ledger: payload.ledger } : {})
     })
     if (operation.kind === 'stamp') {
       // A send this lane gave up waiting on ran after all.
       payload.settle('delivered')
-      db.deleteStructuredPointerOperation(mailboxHandle)
+      this.dropMailOperation(db, mailboxHandle, payload)
       this.sentOperationIds.delete(mailboxHandle)
       return
     }
@@ -317,8 +333,19 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     payload.settle('delivered')
     // The nudge landed as its own turn, so the next settle edge is the natural retry point for
     // anything that arrives while it runs.
-    db.deleteStructuredPointerOperation(mailboxHandle)
+    this.dropMailOperation(db, mailboxHandle, payload)
     this.sentOperationIds.delete(mailboxHandle)
+  }
+
+  /** A delivered mail send's ledger row goes; a preamble's id stays on its own, delivered row. */
+  private dropMailOperation(
+    db: OrchestrationDb,
+    mailboxHandle: string,
+    payload: StructuredPointerPayload
+  ): void {
+    if (!payload.ledger) {
+      db.deleteStructuredPointerOperation(mailboxHandle)
+    }
   }
 
   /**

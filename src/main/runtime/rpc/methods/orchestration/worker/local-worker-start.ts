@@ -30,6 +30,11 @@ import { requireWorkerAuthority, type WorkerEffect } from './worker-topology'
 import { prepareLocalWorkerStart } from './worker-start-validation'
 import { deliverAndSettleWorkerStartReadiness } from './worker-start-readiness-settlement'
 import { resolveDispatchAssigneeParty } from '../../../../orchestration/orchestration-party'
+import {
+  awaitChatTakesTurn,
+  chatNotReadyStatus
+} from '../../../../orchestration/chat-assignee-readiness'
+import { resolveStructuredAssignee } from '../../../../structured-worker-authority'
 
 type WorkerStartMutation = {
   callerFingerprint: string
@@ -188,7 +193,6 @@ export async function startLocalWorker(args: {
     // A structured session is ready the moment its attach returns ok: there is no boot-to-idle
     // gap and no terminal title to read an idle edge from. Only the repo's wait-for-setup policy
     // still holds it back, and that gate has to be waited on explicitly here.
-    // A chat is already running; its readiness is taking the preamble turn, observed below.
     const wait =
       structuredSession || chatTerminal
         ? await awaitStructuredWorkerSetupGate({
@@ -221,6 +225,17 @@ export async function startLocalWorker(args: {
               ? `Setup did not finish before the structured worker started (${wait.status}).`
               : `Agent did not become ready (${wait.status}).`
         )
+      }
+    }
+    // A chat is ready once it can take a turn, as a terminal is once its agent is idle; nothing is
+    // attached before then, so a start that times out leaves the chat as it was.
+    if (chatTerminal) {
+      const chat = resolveStructuredAssignee(terminalHandle, db)
+      const takes = chat
+        ? await awaitChatTakesTurn(chat.sessionId, params.timeoutMs ?? 60_000)
+        : ({ deliver: false, retain: 'session-not-attached' } as const)
+      if (!takes.deliver) {
+        throw new Error(`Agent did not become ready (${chatNotReadyStatus(takes)}).`)
       }
     }
     const terminalAuthority = chatTerminal

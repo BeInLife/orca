@@ -79,8 +79,12 @@ export async function inspectWorkerTerminal(
     }
   }
   if (parseOrcaSessionAddress(terminalHandle)) {
-    // A chat assignee is its address, which nothing re-points, so it is always the exact worker;
-    // its liveness is the session running it now. `agentWait` is absent as for any session.
+    // A chat assignee is its address, which nothing re-points, so it is the exact worker once the
+    // Dispatch is attached to it, as a terminal's is once its pane and process are; its liveness
+    // is the session running it now. `agentWait` is absent as for any session.
+    if (db.getDispatchContextById(dispatchId)?.assignee_handle !== terminalHandle) {
+      return { terminal: null, exact: false, status: 'identity_changed', terminalHandle: null }
+    }
     await runtime.ensureStructuredAgentSessionHost().catch(() => undefined)
     const observation = observeStructuredAssignee(terminalHandle, db) ?? {
       status: 'unverifiable' as const
