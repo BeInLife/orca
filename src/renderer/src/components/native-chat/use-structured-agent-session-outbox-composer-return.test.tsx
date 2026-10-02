@@ -38,8 +38,14 @@ function refused(code: AgentSessionWireRefusalCode, details?: Record<string, unk
 
 afterEach(cleanup)
 
+// Each test its own chat: the outbox store outlives a test, and a leftover entry would drain here.
+let chat = 0
+const sessionId = () => `session-${chat}`
+
 beforeEach(() => {
+  chat += 1
   vi.clearAllMocks()
+  mocks.call.mockReset()
   localStorage.clear()
   clearNativeChatDraftCacheForTests()
   clearNativeChatAttachmentCacheForTests()
@@ -57,7 +63,7 @@ function renderOutbox(
   return renderHook(
     (props: { submissions: readonly AgentJournalSubmission[] }) =>
       useStructuredAgentSessionOutbox({
-        sessionId: 'session-1',
+        sessionId: sessionId(),
         target: TARGET,
         fence: 1,
         submissions: props.submissions,
@@ -162,7 +168,7 @@ describe('a send the host may have recorded', () => {
   it('leaves the outbox once the host says it lost track across a restart, said once', async () => {
     const doubted: StructuredAgentSessionOutboxEntry = {
       clientMessageId: 'op-doubted',
-      sessionId: 'session-1',
+      sessionId: sessionId(),
       body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'fix the build' }] },
       previewUris: [],
       state: 'unconfirmed',
@@ -170,7 +176,7 @@ describe('a send the host may have recorded', () => {
       lastAttemptAt: 1,
       retryAfterUnknownSubmittedAt: null
     }
-    commitStructuredAgentSessionOutbox('session-1', [doubted])
+    commitStructuredAgentSessionOutbox(sessionId(), [doubted])
     const { result, rerender } = renderOutbox()
     expect(result.current.outbox).toHaveLength(1)
 
