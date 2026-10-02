@@ -45,17 +45,38 @@ export function structuredSessionPointerCallerKey(sessionId: string): string {
  * group addressing cannot disagree about it.
  */
 export async function readStructuredSessionGateFacts(
-  sessionId: string
+  sessionId: string,
+  isOrchestrationSend?: (clientMessageId: string) => boolean
 ): Promise<StructuredSessionGateFacts | null> {
   const snapshot = await readSessionJournal(sessionId)
-  return snapshot ? structuredSessionGateFacts(snapshot.items) : null
+  return snapshot ? gateFactsOf(sessionId, snapshot, isOrchestrationSend) : null
+}
+
+function gateFactsOf(
+  sessionId: string,
+  snapshot: AgentJournalSnapshot,
+  isOrchestrationSend?: (clientMessageId: string) => boolean
+): StructuredSessionGateFacts {
+  const fence = getStructuredAgentSessionHost()?.deps.store.getRecord(sessionId)?.lease.runtimeFence
+  return structuredSessionGateFacts(
+    snapshot.items,
+    snapshot.submissions,
+    fence,
+    isOrchestrationSend
+  )
 }
 
 /** The pointer lane's gate: the shared idle facts, plus what each recorded send settled as. */
-async function readPointerGateFacts(sessionId: string): Promise<StructuredPointerGateFacts | null> {
+async function readPointerGateFacts(
+  sessionId: string,
+  isOrchestrationSend: (clientMessageId: string) => boolean
+): Promise<StructuredPointerGateFacts | null> {
   const snapshot = await readSessionJournal(sessionId)
   return snapshot
-    ? { ...structuredSessionGateFacts(snapshot.items), submissions: snapshot.submissions }
+    ? {
+        ...gateFactsOf(sessionId, snapshot, isOrchestrationSend),
+        submissions: snapshot.submissions
+      }
     : null
 }
 
@@ -78,8 +99,8 @@ async function readSessionJournal(sessionId: string): Promise<AgentJournalSnapsh
 
 export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHost {
   return {
-    readGateFacts(sessionId) {
-      return readPointerGateFacts(sessionId)
+    readGateFacts(sessionId, isOrchestrationSend) {
+      return readPointerGateFacts(sessionId, isOrchestrationSend)
     },
 
     currentFence(sessionId) {

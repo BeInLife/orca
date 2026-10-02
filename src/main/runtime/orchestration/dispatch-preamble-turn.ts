@@ -12,6 +12,7 @@
 
 import type { OrcaRuntimeService } from '../orca-runtime'
 import type { OrchestrationDb } from './db'
+import type { DispatchPreambleTurnState } from './db/dispatch-context/dispatch-preamble-turn-store'
 
 // No event announces a delivered row, so worker-start polls it, bounded by the observation budget.
 const PREAMBLE_TURN_POLL_MS = 250
@@ -27,23 +28,21 @@ export function queueDispatchPreambleTurn(
 }
 
 /**
- * Whether the chat's provider accepted the preamble as a turn within `timeoutMs`. A row that is gone
- * went with its Dispatch, which ended; nothing will deliver it, so the wait ends there.
+ * How far the preamble got within `timeoutMs`: `delivered` once the chat's provider accepted it as a
+ * turn, else where it stood when the wait ended. A row that is gone (`undefined`) went with its
+ * Dispatch, which ended; nothing will deliver it, so the wait ends there.
  */
 export async function awaitDispatchPreambleTurnDelivered(
   db: OrchestrationDb,
   dispatchId: string,
   timeoutMs: number
-): Promise<boolean> {
+): Promise<DispatchPreambleTurnState | undefined> {
   const deadline = Date.now() + timeoutMs
   for (;;) {
     const state = db.getDispatchPreambleTurn(dispatchId)?.state
-    if (state === 'delivered') {
-      return true
-    }
     const remaining = deadline - Date.now()
-    if (state === undefined || remaining <= 0) {
-      return false
+    if (state === 'delivered' || state === undefined || remaining <= 0) {
+      return state
     }
     await new Promise((resolve) => setTimeout(resolve, Math.min(PREAMBLE_TURN_POLL_MS, remaining)))
   }

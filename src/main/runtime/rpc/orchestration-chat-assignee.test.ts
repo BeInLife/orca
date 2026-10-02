@@ -59,7 +59,7 @@ let starts: { sessionId: string; operationId: string }[]
 let ledger: Map<string, 'accepted' | 'rejected'>
 let submissions: Map<
   string,
-  { clientMessageId: string; dispatchState: string; submittedAt: number }[]
+  { clientMessageId: string; dispatchState: string; submittedAt: number; fence: number }[]
 >
 let closed: string[]
 /** Chat tabs the user has closed; every other session's tab is listed. */
@@ -73,7 +73,13 @@ let statusSubscribers: Set<{ emit: (event: unknown) => void }>
 
 function recordSubmission(sessionId: string, clientMessageId: string, dispatchState: string): void {
   const recorded = submissions.get(sessionId) ?? []
-  recorded.push({ clientMessageId, dispatchState, submittedAt: Date.now() + recorded.length })
+  recorded.push({
+    clientMessageId,
+    dispatchState,
+    submittedAt: Date.now() + recorded.length,
+    // Sent under the session's current lease, as the host records every send.
+    fence: h.records.get(sessionId)?.lease.runtimeFence ?? 0
+  })
   submissions.set(sessionId, recorded)
 }
 
@@ -661,6 +667,30 @@ describe('worker-start --terminal orca_session_id:<chat>', () => {
     })
   })
 
+  it('treats a turn the user just sent, not yet echoed by the provider, as running', async () => {
+    // The user's send is journaled; the provider has not opened its turn yet.
+    recordSubmission(SESSION_Z, 'user-turn', 'pending')
+    const { runId } = await coordinatorTask()
+    const receipt = resultOf((await startOnChat(ADDRESS_Z, 300)).response)
+    expect(receipt).toMatchObject({
+      state: 'failed',
+      lastError: 'Agent did not become ready (running).'
+    })
+
+    // Mail waits it out too, instead of folding into the turn the user just started.
+    await as(SESSION_Y, 'orchestration.send', { to: ADDRESS_Z, subject: 'later', run: runId })
+    h.runtime.onStructuredSessionStatusForMail({ sessionId: SESSION_Z, status: 'idle' })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(turns).toEqual([])
+
+    // The provider answers the user's send; at the next idle edge the mail is pointed.
+    submissions.set(SESSION_Z, [])
+    recordSubmission(SESSION_Z, 'user-turn', 'accepted')
+    h.runtime.onStructuredSessionStatusForMail({ sessionId: SESSION_Z, status: 'idle' })
+    await vi.waitFor(() => expect(turns).toHaveLength(1))
+    expect(turns[0]!.text).toMatch(/orchestration message/)
+  })
+
   it('re-reads the chat only on a status change that could let it take the turn', async () => {
     busy.add(SESSION_Z)
     const starting = startOnChat(ADDRESS_Z, 5_000)
@@ -707,7 +737,7 @@ describe('worker-start --terminal orca_session_id:<chat>', () => {
     expect(receipt).toMatchObject({
       state: 'outcome_unknown',
       turnStart: 'unobserved',
-      lastError: expect.stringContaining('owed to the chat as its next turn'),
+      lastError: expect.stringContaining("the chat's provider did not confirm it as a turn"),
       nextCommands: [
         `orca orchestration worker-show --dispatch ${dispatchId} --json`,
         `orca orchestration worker-abandon --dispatch ${dispatchId} --json`

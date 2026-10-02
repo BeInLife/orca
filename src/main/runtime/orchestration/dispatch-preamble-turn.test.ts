@@ -25,7 +25,7 @@ describe("worker-start's wait for a chat to take its preamble", () => {
   it('reports the turn once the chat took it', async () => {
     const dispatchId = chatDispatchOwingItsPreamble()
     db.settleDispatchPreambleTurnSend(dispatchId, 'delivered')
-    expect(await awaitDispatchPreambleTurnDelivered(db, dispatchId, 5_000)).toBe(true)
+    expect(await awaitDispatchPreambleTurnDelivered(db, dispatchId, 5_000)).toBe('delivered')
   })
 
   it('ends at once, not delivered, when the Dispatch ended and took the preamble with it', async () => {
@@ -34,7 +34,7 @@ describe("worker-start's wait for a chat to take its preamble", () => {
     expect(db.getDispatchPreambleTurn(dispatchId)).toBeUndefined()
 
     const started = Date.now()
-    expect(await awaitDispatchPreambleTurnDelivered(db, dispatchId, 5_000)).toBe(false)
+    expect(await awaitDispatchPreambleTurnDelivered(db, dispatchId, 5_000)).toBeUndefined()
     expect(Date.now() - started).toBeLessThan(1_000)
   })
 })

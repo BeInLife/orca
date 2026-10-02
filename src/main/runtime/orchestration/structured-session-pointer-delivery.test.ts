@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../shared/agent-session-journal-types'
 import {
   decideStructuredSessionPointerDelivery,
   retainReasonForDispatch,
@@ -77,6 +80,36 @@ describe('structured session gate facts', () => {
         pendingApproval()
       ])
     ).toEqual({ turnRunning: true, awaitingHuman: true })
+  })
+})
+
+describe('a send the provider has not answered yet', () => {
+  function sent(
+    dispatchState: AgentJournalSubmission['dispatchState'],
+    fence = 3
+  ): AgentJournalSubmission {
+    return {
+      clientMessageId: 'user-turn',
+      fence,
+      payloadFingerprint: 'fp',
+      dispatchState,
+      providerItemId: null,
+      reason: null,
+      submittedAt: 1,
+      resolvedAt: null
+    }
+  }
+
+  it('reads as a running turn before the provider opens it, as the chat shows Working', () => {
+    // Claude writes its running row only when it echoes the user's message, seconds later.
+    expect(structuredSessionGateFacts([], [sent('pending')], 3)).toMatchObject({
+      turnRunning: true
+    })
+  })
+
+  it('stops reading as running once the provider answered it, or it outlived its lease', () => {
+    expect(structuredSessionGateFacts([], [sent('accepted')], 3)).toEqual(IDLE)
+    expect(structuredSessionGateFacts([], [sent('pending', 2)], 3)).toEqual(IDLE)
   })
 })
 

@@ -4,6 +4,7 @@ import type { RunRow, TaskRow } from '../../../../orchestration/types'
 import type { WorkerStartModeReceipt } from '../../orchestration-worker-start-mode'
 import { deliverWorkerDispatchPreamble } from './deliver-worker-dispatch-preamble'
 import { awaitDispatchPreambleTurnDelivered } from '../../../../orchestration/dispatch-preamble-turn'
+import type { DispatchPreambleTurnState } from '../../../../orchestration/db/dispatch-context/dispatch-preamble-turn-store'
 import { AGENT_PROMPT_EFFECT_TIMEOUT_MS } from '../../../../../../shared/orchestration-timing-budgets'
 import { isStructuredSessionAddress } from '../../../../structured-worker-identity'
 import type { OrchestrationWorkerLaunchReceipt } from './worker-launch-preferences'
@@ -19,11 +20,15 @@ import {
   type WorkerSetupReceipt
 } from './worker-topology'
 
-const CHAT_PREAMBLE_UNOBSERVED =
-  "The dispatch preamble is owed to the chat as its next turn, but the chat's provider did not " +
-  `accept it during observation (up to ${Math.round(AGENT_PROMPT_EFFECT_TIMEOUT_MS / 1000)}s). ` +
+const OBSERVATION_WINDOW = `during observation (up to ${Math.round(AGENT_PROMPT_EFFECT_TIMEOUT_MS / 1000)}s)`
+const CHAT_PREAMBLE_OWED =
+  `The dispatch preamble is owed to the chat as its next turn; it was not sent ${OBSERVATION_WINDOW}. ` +
   'It is sent when the chat can take a turn; if the worker then reports, this Dispatch settles ' +
   'normally.'
+const CHAT_PREAMBLE_SENT_UNCONFIRMED =
+  "The dispatch preamble was sent to the chat, but the chat's provider did not confirm it as a " +
+  `turn ${OBSERVATION_WINDOW}; the chat may be working on it. If the worker reports, this ` +
+  'Dispatch settles normally.'
 
 /**
  * Delivers the dispatch preamble and settles the worker's start state on the strongest
@@ -85,13 +90,13 @@ export async function deliverAndSettleWorkerStartReadiness(args: {
   const turnStart: WorkerTurnStartObservation =
     delivery.structuredTurnStart ??
     (delivery.chatPreambleTurn
-      ? (await awaitDispatchPreambleTurnDelivered(
-          db,
-          args.dispatchId,
-          AGENT_PROMPT_EFFECT_TIMEOUT_MS
-        ))
-        ? { verdict: 'observed' }
-        : { verdict: 'unobserved', reason: CHAT_PREAMBLE_UNOBSERVED }
+      ? chatPreambleTurnStart(
+          await awaitDispatchPreambleTurnDelivered(
+            db,
+            args.dispatchId,
+            AGENT_PROMPT_EFFECT_TIMEOUT_MS
+          )
+        )
       : await observeWorkerTurnStart({ runtime, terminalHandle, prompt: promptDelivery }))
   const deliveredPrompt = turnStart.prompt ?? promptDelivery
   monitorWorkerSetup({
@@ -172,5 +177,19 @@ export async function deliverAndSettleWorkerStartReadiness(args: {
     ...(deliveredPrompt ? { prompt: deliveredPrompt } : {}),
     residualResources: [],
     ...(args.terminalRevealWarning ? { warning: args.terminalRevealWarning } : {})
+  }
+}
+
+/** A chat's preamble turn start, worded by how far its one send got. */
+function chatPreambleTurnStart(
+  state: DispatchPreambleTurnState | undefined
+): WorkerTurnStartObservation {
+  if (state === 'delivered') {
+    return { verdict: 'observed' }
+  }
+  const sent = state === 'sending' || state === 'in_doubt'
+  return {
+    verdict: 'unobserved',
+    reason: sent ? CHAT_PREAMBLE_SENT_UNCONFIRMED : CHAT_PREAMBLE_OWED
   }
 }

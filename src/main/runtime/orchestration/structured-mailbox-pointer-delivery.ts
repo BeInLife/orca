@@ -78,7 +78,11 @@ export type StructuredPointerGateFacts = StructuredSessionGateFacts & {
 
 export type StructuredMailboxPointerHost = {
   /** The idle gate, read off the session's full reduced timeline; `null` when it cannot be read. */
-  readGateFacts: (sessionId: string) => Promise<StructuredPointerGateFacts | null>
+  /** `isOrchestrationSend` names this lane's own sends, which its operation ledger settles. */
+  readGateFacts: (
+    sessionId: string,
+    isOrchestrationSend: (clientMessageId: string) => boolean
+  ) => Promise<StructuredPointerGateFacts | null>
   send: (input: {
     sessionId: string
     dispatchId: string | null
@@ -264,7 +268,8 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     reservedTypes: ReadonlySet<string> | undefined
   ): Promise<void> {
     const sessionId = target.sessionId
-    const session = await this.deps.host.readGateFacts(sessionId)
+    const ownSends = db.listStructuredPointerOperationIds?.(sessionId) ?? new Set<string>()
+    const session = await this.deps.host.readGateFacts(sessionId, (id) => ownSends.has(id))
     const decision = decideStructuredSessionPointerDelivery({ session })
     if (!decision.deliver) {
       this.retain(mailboxHandle, sessionId, decision.retain, reservedTypes)
