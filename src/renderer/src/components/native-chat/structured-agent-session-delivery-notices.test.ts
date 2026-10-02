@@ -133,7 +133,9 @@ describe('the notice on each message that did not go through', () => {
   })
 
   it('says a message is unconfirmed, and only that it was not sent when nothing more is known', () => {
-    expect(texts([entry('doubt', { state: 'unconfirmed' })])).toEqual({
+    expect(
+      texts([entry('doubt', { state: 'unconfirmed', retryAfterUnknownSubmittedAt: -1 })])
+    ).toEqual({
       [agentJournalSubmissionKey('doubt')]: 'Message delivery is unconfirmed.'
     })
     expect(texts([entry('bare', { state: 'rejected' })])).toEqual({
@@ -160,7 +162,7 @@ describe('the notice on each message that did not go through', () => {
         entry('sent', { state: 'dispatching' }),
         entry('rejected', { state: 'rejected' }),
         entry('failed', { lastFailure: { kind: 'failed' } }),
-        entry('stuck', { state: 'unconfirmed' }),
+        entry('stuck', { state: 'unconfirmed', retryAfterUnknownSubmittedAt: -1 }),
         entry('behind', { state: 'unconfirmed' }),
         entry('queued')
       ])
@@ -175,7 +177,10 @@ describe('the notice on each message that did not go through', () => {
   it('keeps a rejected message behind the stopped one its words but not its Retry', () => {
     const retry = vi.fn()
     for (const outbox of [
-      [entry('stuck', { state: 'unconfirmed' }), entry('rejected', { state: 'rejected' })],
+      [
+        entry('stuck', { state: 'unconfirmed', retryAfterUnknownSubmittedAt: -1 }),
+        entry('rejected', { state: 'rejected' })
+      ],
       [entry('held', { outlivedStop: true }), entry('rejected', { state: 'rejected' })]
     ]) {
       const notices = structuredAgentSessionDeliveryNotices(
@@ -194,7 +199,7 @@ describe('the notice on each message that did not go through', () => {
 
   // Ahead of the stopped message, its Retry sends it at once, so the row offers it.
   it.each([
-    ['in doubt', { state: 'unconfirmed' as const }],
+    ['in doubt', { state: 'unconfirmed' as const, retryAfterUnknownSubmittedAt: -1 }],
     ['outlived by a Stop', { outlivedStop: true as const }]
   ])('gives a failed message ahead of one %s its Retry', (_label, patch) => {
     const retry = vi.fn()
@@ -458,6 +463,19 @@ describe('the notice on each message that did not go through', () => {
 
   it('says nothing on a message that is only waiting its turn or on its way', () => {
     expect(texts([entry('queued'), entry('sending', { state: 'dispatching' })])).toEqual({})
+  })
+
+  // Orca resends it under its own id until the host answers, as for a send still on its way.
+  it('says nothing on a message in doubt that Orca is still confirming on its own', () => {
+    const notices = structuredAgentSessionDeliveryNotices(
+      [entry('confirming', { state: 'unconfirmed', lastAttemptAt: 1 }), entry('behind')],
+      'Claude',
+      () => {},
+      [],
+      [],
+      NOT_FAILED_HERE
+    )
+    expect(notices.size).toBe(0)
   })
 
   // Matched on the typed fact of a row found by its identity, never on either sentence.

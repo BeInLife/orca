@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import { structuredAgentSessionEntryConfirmingByItself } from '../../../../shared/structured-agent-session-outbox-settlement'
 import {
   commitStructuredAgentSessionOutbox,
   getStructuredAgentSessionOutbox
@@ -43,8 +44,7 @@ export function useStructuredAgentSessionOutboxUnconfirmedProbe(args: {
   const probeId =
     blocker &&
     blocker.sessionId === sessionId &&
-    blocker.retryAfterUnknownSubmittedAt === null &&
-    blocker.outlivedStop !== true
+    structuredAgentSessionEntryConfirmingByItself(blocker)
       ? blocker.clientMessageId
       : null
   const probeSettled =

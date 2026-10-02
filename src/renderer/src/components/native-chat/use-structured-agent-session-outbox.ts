@@ -8,6 +8,7 @@ import {
 } from 'react'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
+import { structuredAgentSessionSubmissionOutcomeLost } from '../../../../shared/structured-agent-session-outbox-settlement'
 import {
   admitStructuredAgentSessionOutboxEntry,
   structuredAgentSessionEntryHeldForRetry
@@ -46,6 +47,8 @@ import {
 } from '../../../../shared/structured-agent-session-outbox-delivery'
 import { retryStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-retry'
 import { useStructuredAgentSessionOutboxFailedHere } from './use-structured-agent-session-outbox-failed-here'
+import { agentSessionWriteNoticeParts } from '../../../../shared/agent-session-refusal-notice'
+import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 
 const NO_QUEUE_DELIVERY: StructuredAgentSessionQueueDelivery = {
   capability: 'unsupported',
@@ -61,8 +64,11 @@ export function useStructuredAgentSessionOutbox(args: {
   target: RuntimeClientTarget
   fence: number | null
   submissions: readonly AgentJournalSubmission[]
-  /** The composer that gets back what a Stop withdrew from this client's outbox. */
+  /** The composer that gets back what a Stop withdrew from this client's outbox, or a send the
+   *  host refused before recording it. */
   composerScopeKey?: string
+  /** The chat's agent, for the words of a send that left the outbox with a failure. */
+  agentName?: string
   /** The host's queued-messages capability and the user's setting; a send stamped
    *  `delivery: 'queue-if-active'` is held as a draft only while the agent is working. */
   queueDelivery?: StructuredAgentSessionQueueDelivery
@@ -72,6 +78,7 @@ export function useStructuredAgentSessionOutbox(args: {
   queuedMessageIds?: readonly string[]
 }) {
   const {
+    agentName,
     composerScopeKey,
     fence,
     queueDelivery = NO_QUEUE_DELIVERY,
@@ -146,6 +153,11 @@ export function useStructuredAgentSessionOutbox(args: {
       ...handedOffQueuedMessageIds(submissions)
     ])
     const next = reconcileStructuredAgentSessionOutboxWithQueue(current, submissions)
+    const lostIds = new Set(
+      submissions
+        .filter(structuredAgentSessionSubmissionOutcomeLost)
+        .map((submission) => submission.clientMessageId)
+    )
     const admittedInFlight = journalAnswersInFlightSend(submissions, inFlightIdRef.current)
     if (
       admittedInFlight ||
@@ -172,6 +184,10 @@ export function useStructuredAgentSessionOutbox(args: {
     ) {
       setError(null)
     }
+    // The reconcile dropped it: said once here, as the send's own answer would.
+    if (current.some((entry) => lostIds.has(entry.clientMessageId))) {
+      setError(agentSessionWriteNoticeText(['outcomeUnknown']))
+    }
   }, [restoreWithdrawn, sessionId, submissions])
 
   // The one place that owns the refs, the React state and the storage write.
@@ -180,11 +196,25 @@ export function useStructuredAgentSessionOutbox(args: {
       // Released here rather than in a `.finally`: the state write below is what re-runs the
       // drain, so a later microtask would leave the queue with no trigger to move on.
       inFlightIdRef.current = null
-      setError(disposition.error)
+      const { returned } = disposition
+      if (returned) {
+        restoreWithdrawn.unrecorded([returned.entry])
+      }
+      setError(
+        returned
+          ? agentSessionWriteNoticeText(
+              agentSessionWriteNoticeParts(
+                returned.refusal,
+                'composer-send',
+                agentName ? { agentName } : {}
+              )
+            )
+          : disposition.error
+      )
       recordFailures(getStructuredAgentSessionOutbox(sessionId), disposition.entries)
       commitStructuredAgentSessionOutbox(sessionId, disposition.entries)
     },
-    [recordFailures, sessionId]
+    [agentName, recordFailures, restoreWithdrawn, sessionId]
   )
 
   const [drains, setDrains] = useState(0)
@@ -234,7 +264,8 @@ export function useStructuredAgentSessionOutbox(args: {
       inFlightIdRef,
       setError,
       applyDisposition,
-      createOperationId: structuredSessionOperationId
+      createOperationId: structuredSessionOperationId,
+      returnToComposer: composerScopeKey !== undefined
     })
     if (!dispatch.started) {
       // A launch settlement already owns this entry's send.
@@ -242,6 +273,7 @@ export function useStructuredAgentSessionOutbox(args: {
     }
   }, [
     applyDisposition,
+    composerScopeKey,
     drainAgain,
     drains,
     fence,

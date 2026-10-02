@@ -28,6 +28,7 @@ import {
   structuredAgentSessionEntryIdExpired,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
+import { structuredAgentSessionEntryConfirmingByItself } from '../../../../shared/structured-agent-session-outbox-settlement'
 import {
   admitStructuredAgentSessionOutboxEntry,
   structuredAgentSessionEntryHeldForRetry
@@ -152,6 +153,10 @@ export function structuredAgentSessionDeliveryNotices(
   )
   const notices = new Map<string, NativeChatDeliveryNotice>()
   for (const [index, entry] of outbox.entries()) {
+    // Still being confirmed under its own id, as a send in flight is: nothing to say yet.
+    if (structuredAgentSessionEntryConfirmingByItself(entry)) {
+      continue
+    }
     if (
       entry.state === 'rejected' ||
       structuredAgentSessionEntryHeldForRetry(entry) ||

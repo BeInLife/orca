@@ -41,7 +41,7 @@ export function useStructuredAgentSessionOutboxOwnership(args: {
     }
     // By id: a kept entry comes back marked, as a new object.
     const kept = new Set(next.map((entry) => entry.clientMessageId))
-    restoreWithdrawn.byStop(current.filter((entry) => !kept.has(entry.clientMessageId)))
+    restoreWithdrawn.unrecorded(current.filter((entry) => !kept.has(entry.clientMessageId)))
     commitStructuredAgentSessionOutbox(sessionId, next)
   }, [inFlightIdRef, restoreWithdrawn, sessionId, submissions])
 

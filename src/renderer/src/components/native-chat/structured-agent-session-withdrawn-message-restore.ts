@@ -7,10 +7,10 @@ import { getStructuredAgentSessionOutbox } from './structured-agent-session-outb
 import { appendNativeChatAttachmentCache } from './use-native-chat-composer-attachments'
 
 /**
- * Gives the sender back what a Stop withdrew: its text and images go into this pane's composer,
- * after whatever is there. Called before the entries leave storage, so a failure between the two
- * repeats the text rather than losing it. Only this client's outbox holds them, so no other viewer
- * gets them.
+ * Gives the sender back what a Stop withdrew, or a send the host refused before recording it: its
+ * text and images go into this pane's composer, after whatever is there. Called before the entries
+ * leave storage, so a failure between the two repeats the text rather than losing it. Only this
+ * client's outbox holds them, so no other viewer gets them.
  */
 function restoreWithdrawnMessages(
   sessionId: string,
@@ -54,8 +54,8 @@ export function useStructuredAgentSessionWithdrawnRestore(
     entries: readonly StructuredAgentSessionOutboxEntry[],
     submissions: readonly AgentJournalSubmission[]
   ) => void
-  /** Entries a Stop took out of the outbox here, before the host held them. */
-  byStop: (entries: readonly StructuredAgentSessionOutboxEntry[]) => void
+  /** Entries that left the outbox here unrecorded by the host: a Stop's, or a refused send's. */
+  unrecorded: (entries: readonly StructuredAgentSessionOutboxEntry[]) => void
 } {
   return useMemo(
     () => ({
@@ -76,7 +76,7 @@ export function useStructuredAgentSessionWithdrawnRestore(
           entries.filter((entry) => withdrawn.has(entry.clientMessageId))
         )
       },
-      byStop: (entries) => restoreWithdrawnMessages(sessionId, composerScopeKey, entries)
+      unrecorded: (entries) => restoreWithdrawnMessages(sessionId, composerScopeKey, entries)
     }),
     [composerScopeKey, sessionId]
   )

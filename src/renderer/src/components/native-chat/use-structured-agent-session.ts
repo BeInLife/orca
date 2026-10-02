@@ -121,6 +121,7 @@ export function useStructuredAgentSession(args: {
     fence: transportState.fence,
     submissions: transportState.submissions,
     composerScopeKey,
+    agentName: structuredAgentLabel(agent === 'codex' ? 'codex' : 'claude'),
     queueDelivery: { capability: queueCapability, enabled: queueFollowUps },
     queuedMessageIds
   })

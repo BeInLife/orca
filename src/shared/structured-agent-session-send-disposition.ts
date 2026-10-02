@@ -22,6 +22,7 @@ import {
 import type { AgentSessionFailureFact } from './agent-session-failure'
 import type { AgentSessionFailureWordsContext } from './agent-session-failure-words'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
+import { structuredAgentSessionRefusalProvesUnsent } from './structured-agent-session-outbox-settlement'
 import {
   classifyStructuredAgentSessionSendFailure,
   requeueStructuredAgentSessionSendRefusal,
@@ -34,11 +35,16 @@ export type StructuredAgentSessionSendDisposition = {
   entries: StructuredAgentSessionOutboxEntry[]
   /** Only for an outcome with no entry left to carry it; a kept entry holds its own failure. */
   error: string | null
+  /** A send the host provably never recorded: it left the outbox, its text goes back to the
+   *  composer, and the refusal is said once beside it. */
+  returned?: { entry: StructuredAgentSessionOutboxEntry; refusal: AgentSessionWriteRefusal }
 }
 
 type SendDispositionInput = {
   entries: readonly StructuredAgentSessionOutboxEntry[]
   entry: StructuredAgentSessionOutboxEntry
+  /** Whether a composer shows this chat to take back a send the host never recorded. */
+  returnToComposer?: boolean
 }
 
 function replaceEntryState(
@@ -196,6 +202,24 @@ export function disposeStructuredAgentSessionSendRefusal(
     createOperationId: () => string
   }
 ): StructuredAgentSessionSendDisposition {
+  const retained = input.entry.lastAttemptAt !== null
+  const stored = input.entries.find(
+    (candidate) => candidate.clientMessageId === input.entry.clientMessageId
+  )
+  // Never recorded, so a new send of the same text cannot repeat it. A launch prompt's source
+  // keeps its own copy to send again.
+  if (
+    input.returnToComposer &&
+    stored &&
+    stored.source !== 'launch' &&
+    structuredAgentSessionRefusalProvesUnsent(stored, input.refusal, retained)
+  ) {
+    return {
+      entries: dropEntry(input),
+      error: null,
+      returned: { entry: stored, refusal: input.refusal }
+    }
+  }
   // The refusal saved on a message it keeps `queued` is what holds it for the user's Retry.
   const entries: StructuredAgentSessionOutboxEntry[] = input.entries.map((candidate) =>
     candidate.clientMessageId === input.entry.clientMessageId
@@ -204,7 +228,7 @@ export function disposeStructuredAgentSessionSendRefusal(
             candidate,
             input.refusal,
             input.createOperationId,
-            input.entry.lastAttemptAt !== null
+            retained
           ),
           input.refusal
         )

@@ -6,14 +6,15 @@ import {
   type AgentSessionWriteFailure,
   type AgentSessionWriteRefusal
 } from './agent-session-write-failure'
-import {
-  agentSessionOwnerVerdictAllowsFreshOperationId,
-  agentSessionRefusalOperationState
-} from './agent-session-refusal-retry'
+import { agentSessionRefusalOperationState } from './agent-session-refusal-retry'
 import type { AgentSessionMutationEnvelope } from './agent-session-wire'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 import { parseStructuredAgentSessionOutboxQueueFields } from './structured-agent-session-outbox-delivery'
+import {
+  structuredAgentSessionRefusalProvesUnsent,
+  structuredAgentSessionSubmissionOutcomeLost
+} from './structured-agent-session-outbox-settlement'
 
 /** `rejected`: the host settled the send as not delivered. The drain never sends it again on its
  *  own and nothing queues behind it; only the user's Retry does. */
@@ -180,23 +181,13 @@ export function requeueStructuredAgentSessionSendRefusal(
   createOperationId: () => string,
   retainOperationId = false
 ): StructuredAgentSessionOutboxEntry {
-  const refusalSettled = agentSessionRefusalOperationState(refusal.code) === 'settled-rejected'
-  // An exited owner runs nothing under the old id, so a new one can't collide; the message still
-  // waits for its Retry, since nothing recorded it.
-  const ownerExited =
-    refusal.code === 'agent_session_ownership_unknown' &&
-    agentSessionOwnerVerdictAllowsFreshOperationId(refusal.details?.ownerVerdict)
-  if (
-    !(refusalSettled || ownerExited) ||
-    retainOperationId ||
-    entry.state === 'unconfirmed' ||
-    entry.retryAfterUnknownSubmittedAt !== null
-  ) {
+  if (!structuredAgentSessionRefusalProvesUnsent(entry, refusal, retainOperationId)) {
     return { ...entry, state: 'queued' }
   }
+  const refusalSettled = agentSessionRefusalOperationState(refusal.code) === 'settled-rejected'
   // Only here may the id rotate: an earlier attempt under this id, or one whose delivery was in
-  // doubt, may have landed, so those keep it. Only a settled refusal proves the message never
-  // landed.
+  // doubt, may have landed, so those keep it. An exited owner's message still waits for its
+  // Retry, since nothing recorded it.
   return {
     ...entry,
     clientMessageId: createOperationId(),
@@ -244,6 +235,11 @@ export function reconcileStructuredAgentSessionOutbox(
           lastFailure: structuredAgentSessionRejectedFailure(submission)
         }
       ]
+    }
+    // Recovered: the host restarted mid-delivery and can never settle it. Its row keeps the
+    // message in the chat; nothing may send it again, so nothing here waits on it.
+    if (structuredAgentSessionSubmissionOutcomeLost(submission)) {
+      return []
     }
     if (
       submission?.dispatchState === 'unknown' &&
