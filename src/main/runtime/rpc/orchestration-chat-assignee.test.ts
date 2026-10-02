@@ -9,6 +9,7 @@ import { formatOrcaSessionAddress } from '../../../shared/orca-session-address'
 import { testOrcaSessionId } from '../../../shared/orca-session-address-test-fixture'
 import { OrcaRuntimeService } from '../orca-runtime'
 import { dispatchPreambleMessageId } from '../orchestration/dispatch-preamble-identity'
+import { localOrchestrationCliCommand } from '../orchestration/cli-command'
 import {
   ADDRESS_X,
   createSessionCallerHarness,
@@ -208,6 +209,8 @@ describe('dispatch --inject to a chat', () => {
       process_incarnation: null
     })
     await vi.waitFor(() => expect(turns).toEqual([{ sessionId: SESSION_Z, text: preamble }]))
+    // The same CLI its mail pointers name: this runtime's own, `orca-dev` in a dev build.
+    expect(preamble).toContain(`${localOrchestrationCliCommand()} orchestration send --from`)
     // The turn is the preamble's reading: `check` never replays it.
     await vi.waitFor(() =>
       expect(h.db.getMessageById(dispatchPreambleMessageId(dispatchId))?.read).toBe(1)
