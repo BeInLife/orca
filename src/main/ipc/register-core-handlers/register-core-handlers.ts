@@ -160,7 +160,7 @@ export function registerCoreHandlers(
   registerHostedReviewHandlers(store, stats)
   registerLinearHandlers()
   registerJiraHandlers()
-  registerYouTrackHandlers()
+  registerYouTrackHandlers(() => store.getSettings())
   registerBitbucketHandlers()
   registerFeedbackHandlers()
   if (crashReports) {

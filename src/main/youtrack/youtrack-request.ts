@@ -91,7 +91,8 @@ export async function youtrackRequest(
     if (credentials.allowInsecureTls) {
       // Lazy: keeps electron out of the module graph unless the user opted in.
       const { getInsecureTlsSession } = await import('./insecure-tls-session')
-      response = await getInsecureTlsSession(new URL(url).hostname).fetch(url, requestInit)
+      const insecureSession = await getInsecureTlsSession(new URL(url).hostname)
+      response = await insecureSession.fetch(url, requestInit)
     } else {
       response = await httpClient.fetch(url, requestInit)
     }

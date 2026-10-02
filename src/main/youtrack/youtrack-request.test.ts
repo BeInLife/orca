@@ -25,7 +25,7 @@ describe('youtrackRequest TLS handling', () => {
     vi.clearAllMocks()
     mocks.defaultFetch.mockImplementation(async () => ok())
     mocks.insecureFetch.mockImplementation(async () => ok())
-    mocks.getInsecureTlsSession.mockReturnValue({ fetch: mocks.insecureFetch })
+    mocks.getInsecureTlsSession.mockResolvedValue({ fetch: mocks.insecureFetch })
   })
 
   it('uses the shared client when certificate checks stay on', async () => {
