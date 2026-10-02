@@ -3,6 +3,7 @@ import { CalendarClock, CircleDot, SquareTerminal, StickyNote } from 'lucide-rea
 import { cn } from '@/lib/utils'
 import { LinearIcon } from '@/components/icons/LinearIcon'
 import { JiraIcon } from '@/components/icons/JiraIcon'
+import { YouTrackIcon } from '@/components/icons/YouTrackIcon'
 import { MetaIconBadge } from './WorktreeCardMetadataControls'
 import { getReviewLabel, ReviewIcon } from './worktree-review-helpers'
 import type {
@@ -132,13 +133,23 @@ export const WorktreeCardMetaBadges = React.forwardRef<
       )}
       {jiraIssue && (
         <MetaIconBadge
-          label={translate(
-            'auto.components.sidebar.WorktreeCardMeta.linkedJira',
-            'Linked Jira {{value0}}',
-            { value0: jiraIssue.identifier }
-          )}
+          label={
+            jiraIssue.provider === 'youtrack'
+              ? translate('youtrack.sidebar.linkedIssue', 'Linked YouTrack {{value0}}', {
+                  value0: jiraIssue.identifier
+                })
+              : translate(
+                  'auto.components.sidebar.WorktreeCardMeta.linkedJira',
+                  'Linked Jira {{value0}}',
+                  { value0: jiraIssue.identifier }
+                )
+          }
         >
-          <JiraIcon className="text-muted-foreground" />
+          {jiraIssue.provider === 'youtrack' ? (
+            <YouTrackIcon className="text-muted-foreground" />
+          ) : (
+            <JiraIcon className="text-muted-foreground" />
+          )}
         </MetaIconBadge>
       )}
       {review && (
