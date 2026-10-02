@@ -4,7 +4,10 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TerminalQuickCommand } from '../../../../shared/terminal-quick-command-types'
-import { LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH } from '../../../../shared/terminal-quick-commands'
+import {
+  LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
+  MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH
+} from '../../../../shared/terminal-quick-commands'
 import { TerminalQuickCommandDialog } from './TerminalQuickCommandDialog'
 
 const mountedRoots: Root[] = []
@@ -13,7 +16,7 @@ async function renderDialog(
   command: TerminalQuickCommand,
   props: {
     defaultAdvancedOpen?: boolean
-    agentPromptMaxLength?: number | null
+    agentPromptMaxLength?: number
     onSave?: (command: TerminalQuickCommand) => void
   } = {}
 ): Promise<void> {
@@ -194,10 +197,12 @@ describe('TerminalQuickCommandDialog animation structure', () => {
       button.textContent?.startsWith('Save')
     )
     expect(save?.disabled).toBe(true)
-    expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
-      'too long for this host'
-    )
-    expect(document.body.querySelector('textarea')?.getAttribute('aria-invalid')).toBe('true')
+    const alert = document.body.querySelector('[role="alert"]')
+    expect(alert?.textContent).toContain('Too long for this host')
+    const textareaEl = document.body.querySelector('textarea')
+    expect(textareaEl?.getAttribute('aria-invalid')).toBe('true')
+    // The field names its reason, so focusing it announces more than "invalid".
+    expect(textareaEl?.getAttribute('aria-describedby')?.split(' ')).toContain(alert?.id)
 
     const textarea = document.body.querySelector('textarea')!
     await act(async () => {
@@ -234,7 +239,7 @@ describe('TerminalQuickCommandDialog animation structure', () => {
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ prompt }))
   })
 
-  it('saves a long prompt with no limit or counter when the host has no cap', async () => {
+  it('saves a long prompt with no counter while it is well under this build’s cap', async () => {
     const onSave = vi.fn()
     const prompt = 'x'.repeat(LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH * 3)
     await renderDialog(
@@ -258,5 +263,50 @@ describe('TerminalQuickCommandDialog animation structure', () => {
       )
     })
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ prompt }))
+  })
+
+  it('refuses a prompt over this build’s cap without telling the user to update the host', async () => {
+    await renderDialog({
+      id: 'qc-9',
+      label: 'Review',
+      action: 'agent-prompt',
+      agent: 'claude',
+      prompt: 'x'.repeat(MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH + 1),
+      scope: { type: 'global' }
+    })
+
+    const alert = document.body.querySelector('[role="alert"]')
+    expect(alert?.textContent).toBe('Too long to save.')
+    expect(document.body.textContent).not.toContain('Update Orca')
+  })
+
+  it('keeps the over-cap alert text static while the count changes', async () => {
+    await renderDialog(
+      {
+        id: 'qc-10',
+        label: 'Review',
+        action: 'agent-prompt',
+        agent: 'claude',
+        prompt: 'x'.repeat(LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH + 1),
+        scope: { type: 'global' }
+      },
+      { agentPromptMaxLength: LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH }
+    )
+    const before = document.body.querySelector('[role="alert"]')
+    const beforeText = before?.textContent
+
+    const textarea = document.body.querySelector('textarea')!
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!
+    await act(async () => {
+      setValue.call(textarea, `${textarea.value}y`)
+      textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+
+    expect(document.body.textContent).toContain('6,002')
+    const after = document.body.querySelector('[role="alert"]')
+    // A screen reader re-reads an alert whose text changes, so only the plain count may move.
+    expect(after).toBe(before)
+    expect(after?.textContent).toBe(beforeText)
+    expect(after?.textContent).not.toMatch(/\d/)
   })
 })

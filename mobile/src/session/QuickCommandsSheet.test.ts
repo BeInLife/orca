@@ -3,7 +3,10 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TerminalQuickCommand } from '../../../src/shared/terminal-quick-command-types'
 import type { RpcClient } from '../transport/rpc-client'
-import { MAX_QUICK_COMMANDS } from '../terminal/quick-commands'
+import {
+  MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
+  MAX_QUICK_COMMANDS
+} from '../terminal/quick-commands'
 import { QuickCommandsSheet } from './QuickCommandsSheet'
 
 const mocks = vi.hoisted(() => ({
@@ -87,7 +90,7 @@ describe('QuickCommandsSheet', () => {
           client: {} as RpcClient,
           repoId: 'repo-1',
           repoName: 'Repo',
-          agentPromptMaxLength: null,
+          agentPromptMaxLength: MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
           onLaunch
         })
       )
@@ -110,7 +113,7 @@ describe('QuickCommandsSheet', () => {
           client: {} as RpcClient,
           repoId: 'repo-1',
           repoName: 'Repo',
-          agentPromptMaxLength: null,
+          agentPromptMaxLength: MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
           onLaunch: () => true
         })
       )
@@ -148,7 +151,7 @@ describe('QuickCommandsSheet', () => {
           client: {} as RpcClient,
           repoId: 'repo-1',
           repoName: 'Repo',
-          agentPromptMaxLength: null,
+          agentPromptMaxLength: MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
           onLaunch: () => true
         })
       )
@@ -175,7 +178,7 @@ describe('QuickCommandsSheet', () => {
           client: {} as RpcClient,
           repoId: null,
           repoName: 'Folder workspace',
-          agentPromptMaxLength: null,
+          agentPromptMaxLength: MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
           onLaunch: () => true
         })
       )
@@ -199,7 +202,7 @@ describe('QuickCommandsSheet', () => {
           client: {} as RpcClient,
           repoId: 'repo-1',
           repoName: 'Repo',
-          agentPromptMaxLength: null,
+          agentPromptMaxLength: MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
           onLaunch: () => true
         })
       )

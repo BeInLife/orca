@@ -3157,9 +3157,9 @@
               "agent_toolbar_hint": "Supports /goal, skills, paths",
               "agent_footer_hint": "Multi-line prompts are fine — keep them focused.",
               "resize_hint": "Drag corner to resize",
-              "length_over_limit": "{{value0}} / {{value1}} characters — too long to save",
+              "length_over_limit": "Too long to save.",
               "length_count": "{{value0}} / {{value1}} characters",
-              "prompt_over_host_limit": "{{value0}} / {{value1}} characters — too long for this host. Update Orca on the host to save longer prompts."
+              "prompt_over_host_limit": "Too long for this host. Update Orca on the host to save longer prompts."
             },
             "TerminalQuickCommandDialogFooter": {
               "2e2b958dfc": "Save",

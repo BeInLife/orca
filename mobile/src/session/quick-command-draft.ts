@@ -5,7 +5,9 @@ import type {
 } from '../../../src/shared/terminal-quick-command-types'
 import type { TuiAgent } from '../../../src/shared/tui-agent'
 import {
+  getTerminalQuickCommandBodyMaxLength,
   isAgentQuickCommand,
+  MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
   MAX_QUICK_COMMAND_LABEL_LENGTH,
   MAX_QUICK_COMMAND_TERMINAL_TEXT_LENGTH,
   supportsTerminalAgentQuickCommand
@@ -67,21 +69,21 @@ export function quickCommandToDraft(command: TerminalQuickCommand): QuickCommand
   }
 }
 
-/** Whether the draft's prompt is over the host's cap; `null` means the host has none. */
+/** Whether the draft's prompt is over the host's cap. */
 export function isQuickCommandDraftPromptTooLong(
   draft: QuickCommandDraft,
-  agentPromptMaxLength: number | null
+  agentPromptMaxLength: number
 ): boolean {
   return (
     draft.action === 'agent-prompt' &&
-    agentPromptMaxLength !== null &&
-    draft.prompt.trimEnd().length > agentPromptMaxLength
+    draft.prompt.trimEnd().length >
+      getTerminalQuickCommandBodyMaxLength('agent-prompt', agentPromptMaxLength)
   )
 }
 
 export function isQuickCommandDraftValid(
   draft: QuickCommandDraft,
-  agentPromptMaxLength: number | null = null
+  agentPromptMaxLength: number = MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH
 ): boolean {
   if (!draft.label.trim()) {
     return false
@@ -102,7 +104,7 @@ export function isQuickCommandDraftValid(
 // here so optimistic local state matches what will be saved.
 export function draftToQuickCommand(
   draft: QuickCommandDraft,
-  agentPromptMaxLength: number | null = null
+  agentPromptMaxLength: number = MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH
 ): TerminalQuickCommand | null {
   if (!isQuickCommandDraftValid(draft, agentPromptMaxLength)) {
     return null

@@ -5,12 +5,14 @@ import {
   flattenTerminalQuickCommand,
   getTerminalQuickCommandBody,
   isTerminalAgentQuickCommand,
+  getTerminalQuickCommandBodyMaxLength,
   MAX_QUICK_COMMANDS,
-  LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
+  MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
   MAX_QUICK_COMMAND_LABEL_LENGTH,
   MAX_QUICK_COMMAND_TERMINAL_TEXT_LENGTH,
   parseNormalizedTerminalQuickCommands,
   supportsTerminalAgentQuickCommand,
+  terminalQuickCommandAgentPromptMaxLength,
   terminalQuickCommandMatchesRepo,
   type TerminalQuickCommandMutation
 } from '../../../src/shared/terminal-quick-commands'
@@ -25,11 +27,13 @@ export {
   getTerminalQuickCommandBody,
   terminalQuickCommandMatchesRepo as quickCommandMatchesRepo,
   supportsTerminalAgentQuickCommand,
+  getTerminalQuickCommandBodyMaxLength,
   MAX_QUICK_COMMANDS,
-  LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
+  MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
   MAX_QUICK_COMMAND_LABEL_LENGTH,
   MAX_QUICK_COMMAND_TERMINAL_TEXT_LENGTH,
   parseNormalizedTerminalQuickCommands,
+  terminalQuickCommandAgentPromptMaxLength,
   applyTerminalQuickCommandMutation,
   type TerminalQuickCommandMutation
 }
@@ -102,7 +106,7 @@ export function getQuickCommandDisplayPreview(command: TerminalQuickCommand): st
   if (preview.length <= MAX_QUICK_COMMAND_DISPLAY_PREVIEW_LENGTH) {
     return preview
   }
-  // Why: one-line rows should not send up to 6 KB each through native text
+  // Why: one-line rows should not send whole prompts through native text
   // layout; full command bodies remain available to search, edit, and launch.
   return `${preview.slice(0, MAX_QUICK_COMMAND_DISPLAY_PREVIEW_LENGTH - 1)}…`
 }

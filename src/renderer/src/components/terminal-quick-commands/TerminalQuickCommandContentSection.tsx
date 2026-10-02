@@ -1,8 +1,9 @@
-import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
+import { useId, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import type { TerminalQuickCommand } from '../../../../shared/terminal-quick-command-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import {
   isTerminalAgentQuickCommand,
+  MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
   supportsTerminalAgentQuickCommand
 } from '../../../../shared/terminal-quick-commands'
 import { Label } from '@/components/ui/label'
@@ -29,38 +30,30 @@ type TerminalQuickCommandContentSectionProps = {
   isAgentAction: boolean
   selectedAgent: TuiAgent
   bodyLength: number
-  bodyMaxLength: number | null
+  bodyMaxLength: number
   draftMemoryRef: MutableRefObject<TerminalQuickCommandDialogDraftMemory>
   setDraft: Dispatch<SetStateAction<TerminalQuickCommand>>
   toggleAppendEnter: () => void
 }
 
-function getBodyLengthLabel(
-  bodyLength: number,
-  bodyMaxLength: number,
-  bodyTooLong: boolean,
-  isAgentAction: boolean
-): string {
-  const values = { value0: bodyLength.toLocaleString(), value1: bodyMaxLength.toLocaleString() }
-  if (bodyTooLong && isAgentAction) {
-    return translate(
-      'auto.components.terminal.quick.commands.TerminalQuickCommandDialog.prompt_over_host_limit',
-      '{{value0}} / {{value1}} characters — too long for this host. Update Orca on the host to save longer prompts.',
-      values
-    )
-  }
-  if (bodyTooLong) {
-    return translate(
-      'auto.components.terminal.quick.commands.TerminalQuickCommandDialog.length_over_limit',
-      '{{value0}} / {{value1}} characters — too long to save',
-      values
-    )
-  }
+function getBodyLengthLabel(bodyLength: number, bodyMaxLength: number): string {
   return translate(
     'auto.components.terminal.quick.commands.TerminalQuickCommandDialog.length_count',
     '{{value0}} / {{value1}} characters',
-    values
+    { value0: bodyLength.toLocaleString(), value1: bodyMaxLength.toLocaleString() }
   )
+}
+
+function getBodyRefusalLabel(belowCurrentPromptCap: boolean): string {
+  return belowCurrentPromptCap
+    ? translate(
+        'auto.components.terminal.quick.commands.TerminalQuickCommandDialog.prompt_over_host_limit',
+        'Too long for this host. Update Orca on the host to save longer prompts.'
+      )
+    : translate(
+        'auto.components.terminal.quick.commands.TerminalQuickCommandDialog.length_over_limit',
+        'Too long to save.'
+      )
 }
 
 export function TerminalQuickCommandContentSection({
@@ -73,9 +66,13 @@ export function TerminalQuickCommandContentSection({
   setDraft,
   toggleAppendEnter
 }: TerminalQuickCommandContentSectionProps): React.JSX.Element {
-  const bodyTooLong = bodyMaxLength !== null && bodyLength > bodyMaxLength
-  const showBodyLength =
-    bodyMaxLength !== null && bodyLength >= bodyMaxLength * BODY_LENGTH_COUNTER_THRESHOLD
+  const bodyTooLong = bodyLength > bodyMaxLength
+  const showBodyLength = bodyLength >= bodyMaxLength * BODY_LENGTH_COUNTER_THRESHOLD
+  const lengthId = useId()
+  const refusalId = useId()
+  const describedBy =
+    [showBodyLength ? lengthId : null, bodyTooLong ? refusalId : null].filter(Boolean).join(' ') ||
+    undefined
   const commandText = isTerminalAgentQuickCommand(draft) ? draft.prompt : draft.command
   // Why: the frame header is a plain span, so the textarea carries the accessible name itself.
   const commandFieldLabel = isAgentAction
@@ -171,7 +168,13 @@ export function TerminalQuickCommandContentSection({
       </div>
 
       {/* Why: the textarea drops its own ring, so the frame carries the focus state. */}
-      <div className="overflow-hidden rounded-md border border-border bg-[var(--editor-surface)] transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
+      <div
+        className={cn(
+          'overflow-hidden rounded-md border border-border bg-[var(--editor-surface)] transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50',
+          bodyTooLong &&
+            'border-destructive ring-destructive/20 focus-within:border-destructive focus-within:ring-destructive/20 dark:ring-destructive/40 dark:focus-within:ring-destructive/40'
+        )}
+      >
         <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/70 px-3 py-2">
           <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
             {commandFieldLabel}
@@ -190,6 +193,7 @@ export function TerminalQuickCommandContentSection({
           value={commandText}
           aria-label={commandFieldLabel}
           aria-invalid={bodyTooLong || undefined}
+          aria-describedby={describedBy}
           onChange={(event) => {
             const text = event.target.value
             draftMemoryRef.current = isAgentAction
@@ -242,14 +246,24 @@ export function TerminalQuickCommandContentSection({
             </span>
           )}
           {showBodyLength ? (
-            <span
-              className={cn(
-                'shrink-0 text-[11px] tabular-nums',
-                bodyTooLong ? 'text-destructive' : 'text-muted-foreground'
-              )}
-              role={bodyTooLong ? 'alert' : undefined}
-            >
-              {getBodyLengthLabel(bodyLength, bodyMaxLength, bodyTooLong, isAgentAction)}
+            <span className="flex shrink-0 items-center gap-2 text-[11px]">
+              {/* Why static text in the alert: a live count would re-announce on every keystroke. */}
+              {bodyTooLong ? (
+                <span id={refusalId} role="alert" className="text-destructive">
+                  {getBodyRefusalLabel(
+                    isAgentAction && bodyMaxLength < MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH
+                  )}
+                </span>
+              ) : null}
+              <span
+                id={lengthId}
+                className={cn(
+                  'tabular-nums',
+                  bodyTooLong ? 'text-destructive' : 'text-muted-foreground'
+                )}
+              >
+                {getBodyLengthLabel(bodyLength, bodyMaxLength)}
+              </span>
             </span>
           ) : (
             <span className="shrink-0 text-[11px] text-muted-foreground">

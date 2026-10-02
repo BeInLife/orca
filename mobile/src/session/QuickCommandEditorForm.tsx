@@ -6,6 +6,7 @@ import { TEXT_INPUT_FONT_SIZE } from '../platform/text-input-font-size'
 import { MobileAgentIcon } from '../components/MobileAgentIcon'
 import {
   getQuickCommandAgentLabel,
+  MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
   MAX_QUICK_COMMAND_LABEL_LENGTH,
   MAX_QUICK_COMMAND_TERMINAL_TEXT_LENGTH
 } from '../terminal/quick-commands'
@@ -21,8 +22,8 @@ type Props = {
   // worktree's repo — no cross-repo picker like desktop.
   repoId: string | null
   repoName: string | null
-  /** The host's agent-prompt cap; `null` means none. */
-  agentPromptMaxLength: number | null
+  /** The host's agent-prompt cap. */
+  agentPromptMaxLength: number
   onChange: (patch: Partial<QuickCommandDraft>) => void
   onOpenAgentPicker: () => void
   onCancel: () => void
@@ -137,10 +138,18 @@ export function QuickCommandEditorForm({
           // Why: maxLength drops the tail of a paste silently, so prompts show a refusal instead.
           maxLength={isAgent ? undefined : MAX_QUICK_COMMAND_TERMINAL_TEXT_LENGTH}
         />
-        {promptTooLong && agentPromptMaxLength !== null ? (
-          <Text style={styles.error}>
-            {`${draft.prompt.trimEnd().length.toLocaleString()} / ${agentPromptMaxLength.toLocaleString()} characters — too long for this host. Update Orca on the host to save longer prompts.`}
-          </Text>
+        {promptTooLong ? (
+          <View>
+            {/* Why static text in the alert: a live count would re-announce on every keystroke. */}
+            <Text style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+              {agentPromptMaxLength < MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH
+                ? 'Too long for this host. Update Orca on the host to save longer prompts.'
+                : 'Too long to save.'}
+            </Text>
+            <Text style={styles.hint}>
+              {`${draft.prompt.trimEnd().length.toLocaleString()} / ${agentPromptMaxLength.toLocaleString()} characters`}
+            </Text>
+          </View>
         ) : isAgent ? (
           <Text style={styles.hint}>Supports skills, file paths, and built-in commands.</Text>
         ) : null}

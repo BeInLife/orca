@@ -1,4 +1,6 @@
 import { isTuiAgent, TUI_AGENT_CONFIG } from './tui-agent-config'
+import { getTerminalInputByteLength } from './terminal-input'
+import { TERMINAL_QUICK_COMMAND_LONG_PROMPTS_RUNTIME_CAPABILITY } from './terminal-quick-command-capabilities'
 import type {
   TerminalAgentQuickCommand,
   TerminalCommandQuickCommand,
@@ -12,9 +14,16 @@ export const MAX_QUICK_COMMAND_ID_LENGTH = 80
 export const MAX_QUICK_COMMAND_LABEL_LENGTH = 80
 export const MAX_QUICK_COMMAND_REPO_ID_LENGTH = 200
 export const MAX_QUICK_COMMAND_TERMINAL_TEXT_LENGTH = 4000
+// Why 100,000: one saved command must fit a paired client's 1 MiB inbound frame even at JSON's
+// 6x escape worst case under base64 encryption (~786 KB of plaintext). The value is part of the
+// `terminal.quick-commands.long-prompts.v1` contract; changing it needs a new capability.
+export const MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH = 100_000
 // Why: builds before long-prompt support refuse longer prompts on save and reject a whole list
-// holding one. Agent prompts themselves are unbounded; this is only for talking to those builds.
+// holding one; this is only for talking to those builds.
 export const LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH = 6000
+// Why: the whole list is one RPC reply, which a paired session closes over past 4 MiB of JSON;
+// this leaves room for the reply envelope and echoed request id.
+export const MAX_TERMINAL_QUICK_COMMANDS_SERIALIZED_BYTES = 4 * 1024 * 1024 - 128 * 1024
 const REMOVED_PRESET_IDS = new Set(['default-pwd', 'default-git-status'])
 
 const DEFAULT_TERMINAL_QUICK_COMMANDS: TerminalQuickCommand[] = []
@@ -78,12 +87,54 @@ export function getTerminalQuickCommandBody(command: TerminalQuickCommand): stri
   return isTerminalAgentQuickCommand(command) ? command.prompt : command.command
 }
 
-/** `null` means no limit. `agentPromptMaxLength` is the target host's prompt cap, if it has one. */
+/**
+ * The agent-prompt cap of a host with these capabilities. Unknown capabilities count as current:
+ * an older host refuses a longer prompt itself, visibly, so guessing must never block a save.
+ */
+export function terminalQuickCommandAgentPromptMaxLength(
+  hostCapabilities: readonly string[] | null | undefined
+): number {
+  return hostCapabilities &&
+    !hostCapabilities.includes(TERMINAL_QUICK_COMMAND_LONG_PROMPTS_RUNTIME_CAPABILITY)
+    ? LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH
+    : MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH
+}
+
+/** `agentPromptMaxLength` is the target host's prompt cap. */
 export function getTerminalQuickCommandBodyMaxLength(
   action: TerminalQuickCommandAction,
-  agentPromptMaxLength: number | null
-): number | null {
+  agentPromptMaxLength: number
+): number {
   return action === 'agent-prompt' ? agentPromptMaxLength : MAX_QUICK_COMMAND_TERMINAL_TEXT_LENGTH
+}
+
+/**
+ * Refuses a list the host must not store: a prompt over the cap, or a list too large to send to a
+ * paired client in one reply. Normalization never trims a prompt, so this is the bound.
+ */
+export function assertTerminalQuickCommandsStorable(
+  commands: readonly TerminalQuickCommand[]
+): void {
+  for (const command of commands) {
+    if (
+      isTerminalAgentQuickCommand(command) &&
+      command.prompt.length > MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH
+    ) {
+      throw new Error(
+        `The prompt for "${command.label}" is ${command.prompt.length.toLocaleString('en-US')} characters. Quick command prompts can be up to ${MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH.toLocaleString('en-US')}.`
+      )
+    }
+  }
+  const bytes = getTerminalInputByteLength(JSON.stringify(commands))
+  if (bytes > MAX_TERMINAL_QUICK_COMMANDS_SERIALIZED_BYTES) {
+    throw new Error(
+      `Quick commands total ${formatMegabytes(bytes)}, over the ${formatMegabytes(MAX_TERMINAL_QUICK_COMMANDS_SERIALIZED_BYTES)} limit. Shorten or remove a prompt.`
+    )
+  }
+}
+
+function formatMegabytes(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 export function isLegacyReadableTerminalQuickCommand(command: TerminalQuickCommand): boolean {

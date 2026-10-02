@@ -8,6 +8,7 @@ import type { TuiAgent } from '../../../../shared/tui-agent'
 import {
   getTerminalQuickCommandAction,
   getTerminalQuickCommandBodyMaxLength,
+  MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
   getTerminalQuickCommandScope,
   isTerminalAgentQuickCommand,
   supportsTerminalAgentQuickCommand
@@ -45,8 +46,8 @@ type TerminalQuickCommandDialogProps = {
   /** Settings has no ambient workspace to imply scope from, so it opens the
    *  Advanced section up front. In-workspace entry points leave it collapsed. */
   defaultAdvancedOpen?: boolean
-  /** The target host's agent-prompt cap; `null` (the default) means none. */
-  agentPromptMaxLength?: number | null
+  /** The target host's agent-prompt cap; defaults to this build's. */
+  agentPromptMaxLength?: number
   onOpenChange: (open: boolean) => void
   onSave: (command: TerminalQuickCommand) => void
 }
@@ -71,7 +72,7 @@ export function TerminalQuickCommandDialog({
   command,
   repos = EMPTY_REPOS,
   defaultAdvancedOpen = false,
-  agentPromptMaxLength = null,
+  agentPromptMaxLength = MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
   onOpenChange,
   onSave
 }: TerminalQuickCommandDialogProps): React.JSX.Element {
@@ -116,7 +117,7 @@ export function TerminalQuickCommandDialog({
   const bodyLength = (isAgentAction ? draft.prompt : draft.command).trimEnd().length
   const bodyMaxLength = getTerminalQuickCommandBodyMaxLength(selectedAction, agentPromptMaxLength)
   // Why: past the cap the host refuses or trims the save, so block it instead of losing the tail.
-  const bodyTooLong = bodyMaxLength !== null && bodyLength > bodyMaxLength
+  const bodyTooLong = bodyLength > bodyMaxLength
 
   const setAction = (action: 'terminal-command' | 'agent-prompt'): void => {
     setDraft((current) => {

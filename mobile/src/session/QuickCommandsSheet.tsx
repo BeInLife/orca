@@ -26,8 +26,8 @@ type Props = {
   client: RpcClient | null
   repoId: string | null
   repoName: string | null
-  /** The host's agent-prompt cap; `null` means none. */
-  agentPromptMaxLength: number | null
+  /** The host's agent-prompt cap. */
+  agentPromptMaxLength: number
   onLaunch: (command: TerminalQuickCommand) => boolean
 }
 
@@ -62,7 +62,7 @@ export function QuickCommandsSheet({
     }
   }
 
-  // Why: prompt bodies can total ~240 KB. Lowercase them once per settings
+  // Why: prompt bodies can total megabytes. Lowercase them once per settings
   // update instead of allocating the same search text on every keystroke.
   const searchableCommands = useMemo(() => {
     return commands

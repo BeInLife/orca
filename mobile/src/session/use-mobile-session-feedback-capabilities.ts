@@ -3,6 +3,7 @@ import { Animated } from 'react-native'
 import { reconcileMobileSessionCreateWarningState } from './mobile-session-create-warning-state'
 import type { MobileSessionTerminalRuntimeModel } from './use-mobile-session-terminal-runtime'
 import type { StructuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
+import { MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH } from '../terminal/quick-commands'
 
 export function useMobileSessionFeedbackCapabilities(scope: MobileSessionTerminalRuntimeModel) {
   const {
@@ -33,8 +34,9 @@ export function useMobileSessionFeedbackCapabilities(scope: MobileSessionTermina
     null
   )
   const [quickCommandsSupported, setQuickCommandsSupported] = useState<boolean | null>(null)
-  // Why: until a host says it stores long prompts, edits keep to the cap older hosts enforce.
-  const [quickCommandsAcceptLongPrompts, setQuickCommandsAcceptLongPrompts] = useState(false)
+  const [quickCommandAgentPromptMaxLength, setQuickCommandAgentPromptMaxLength] = useState(
+    MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH
+  )
   // Structured-session features are negotiated with the same host capability probe as
   // the other session surfaces; consumers never maintain a second status cache.
   const [agentSessionHostSupport, setAgentSessionHostSupport] =
@@ -122,8 +124,8 @@ export function useMobileSessionFeedbackCapabilities(scope: MobileSessionTermina
     setAgentSessionHistorySupported,
     quickCommandsSupported,
     setQuickCommandsSupported,
-    quickCommandsAcceptLongPrompts,
-    setQuickCommandsAcceptLongPrompts,
+    quickCommandAgentPromptMaxLength,
+    setQuickCommandAgentPromptMaxLength,
     agentSessionHostSupport,
     setAgentSessionHostSupport,
     browserScreencastSupportedRef,

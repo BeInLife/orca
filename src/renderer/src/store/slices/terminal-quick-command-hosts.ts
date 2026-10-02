@@ -9,9 +9,9 @@ import {
 } from '../../../../shared/terminal-quick-commands'
 import { parseExecutionHostId, type ExecutionHostId } from '../../../../shared/execution-host'
 import { TERMINAL_QUICK_COMMANDS_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
-import { TERMINAL_QUICK_COMMAND_LONG_PROMPTS_RUNTIME_CAPABILITY } from '../../../../shared/terminal-quick-command-capabilities'
 import { callRuntimeRpc, runtimeEnvironmentSupportsCapability } from '@/runtime/runtime-rpc-client'
 import { translate } from '@/i18n/i18n'
+import { extractIpcErrorMessage } from '@/lib/ipc-error'
 import { getRuntimeEnvironmentConnectionGeneration } from './runtime-status'
 
 export type RuntimeTerminalQuickCommands = {
@@ -21,8 +21,6 @@ export type RuntimeTerminalQuickCommands = {
   loading: boolean
   ready: boolean
   supported: boolean | null
-  /** Whether the host stores prompts over the legacy cap; null until probed. */
-  acceptsLongPrompts: boolean | null
 }
 
 export type TerminalQuickCommandHostsSlice = {
@@ -74,7 +72,8 @@ async function mutateLocalCommands(
     await get().updateSettingsOrThrow({ terminalQuickCommands: next })
     return true
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to save quick command.'
+    // Why: main refuses an unstorable list with its own sentence; drop Electron's IPC wrapper.
+    const message = extractIpcErrorMessage(error, 'Failed to save quick command.')
     toast.error(
       translate(
         'auto.store.slices.terminal.quick.command.hosts.5b7d781d67',
@@ -114,8 +113,7 @@ async function mutateRemoteCommands(
         error: null,
         loading: false,
         ready: true,
-        supported: true,
-        acceptsLongPrompts: current?.acceptsLongPrompts ?? null
+        supported: true
       }))
       succeeded = true
     } catch (error) {
@@ -129,8 +127,7 @@ async function mutateRemoteCommands(
         error: message,
         loading: false,
         ready: current?.ready ?? false,
-        supported: current?.supported ?? null,
-        acceptsLongPrompts: current?.acceptsLongPrompts ?? null
+        supported: current?.supported ?? null
       }))
       toast.error(
         translate(
@@ -185,11 +182,7 @@ export const createTerminalQuickCommandHostsSlice: StateCreator<
         ready:
           entry?.connectionGeneration === connectionGeneration ? (entry.ready ?? false) : false,
         supported:
-          entry?.connectionGeneration === connectionGeneration ? (entry.supported ?? null) : null,
-        acceptsLongPrompts:
-          entry?.connectionGeneration === connectionGeneration
-            ? (entry.acceptsLongPrompts ?? null)
-            : null
+          entry?.connectionGeneration === connectionGeneration ? (entry.supported ?? null) : null
       }))
       try {
         const supported = await runtimeEnvironmentSupportsCapability(
@@ -207,16 +200,10 @@ export const createTerminalQuickCommandHostsSlice: StateCreator<
             error: null,
             loading: false,
             ready: true,
-            supported: false,
-            acceptsLongPrompts: false
+            supported: false
           }))
           return
         }
-        const acceptsLongPrompts = await runtimeEnvironmentSupportsCapability(
-          trimmed,
-          TERMINAL_QUICK_COMMAND_LONG_PROMPTS_RUNTIME_CAPABILITY,
-          15_000
-        )
         await (mutationChains.get(trimmed) ?? Promise.resolve())
         const mutationRevision = mutationRevisions.get(trimmed) ?? 0
         const result = await callRuntimeRpc<{ terminalQuickCommands: unknown }>(
@@ -237,8 +224,7 @@ export const createTerminalQuickCommandHostsSlice: StateCreator<
           error: null,
           loading: false,
           ready: true,
-          supported: true,
-          acceptsLongPrompts
+          supported: true
         }))
       } catch (error) {
         if (getRuntimeEnvironmentConnectionGeneration(trimmed) !== connectionGeneration) {
@@ -250,8 +236,7 @@ export const createTerminalQuickCommandHostsSlice: StateCreator<
           error: error instanceof Error ? error.message : 'Failed to load quick commands.',
           loading: false,
           ready: entry?.ready ?? false,
-          supported: entry?.supported ?? null,
-          acceptsLongPrompts: entry?.acceptsLongPrompts ?? null
+          supported: entry?.supported ?? null
         }))
       }
     })()

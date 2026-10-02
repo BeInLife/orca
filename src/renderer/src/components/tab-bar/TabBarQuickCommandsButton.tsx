@@ -158,7 +158,7 @@ export function TabBarQuickCommandsButton({
     })
   }
   const editorPromptMaxLength = useAppStore((state) =>
-    editor ? getTerminalQuickCommandHostPromptMaxLength(state, editor.hostId) : null
+    editor ? getTerminalQuickCommandHostPromptMaxLength(state, editor.hostId) : undefined
   )
   const editorRepos = editor?.hostId.startsWith('runtime:')
     ? repos.filter((repo) => getRepoExecutionHostId(repo) === editor.hostId)

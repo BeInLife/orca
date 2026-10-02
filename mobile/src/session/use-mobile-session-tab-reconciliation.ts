@@ -1,9 +1,12 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react'
 import { startRuntimeCapabilityProbe } from '../transport/runtime-capability-probe'
-import { supportsMobileQuickCommands } from '../terminal/quick-commands'
+import {
+  MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
+  supportsMobileQuickCommands,
+  terminalQuickCommandAgentPromptMaxLength
+} from '../terminal/quick-commands'
 import { MOBILE_AI_VAULT_CAPABILITY } from '../agent-history/agent-history-capability'
 import { TERMINAL_QUERY_REPLY_INPUT_RUNTIME_CAPABILITY } from '../../../src/shared/protocol-version'
-import { TERMINAL_QUICK_COMMAND_LONG_PROMPTS_RUNTIME_CAPABILITY } from '../../../src/shared/terminal-quick-command-capabilities'
 import { structuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
 import { runAcceptedMobileSessionTabsEffects } from './mobile-session-tabs-accepted-effects'
 import type { SessionTabsStreamSource } from './mobile-session-tabs-stream-health'
@@ -35,7 +38,7 @@ export function useMobileSessionTabReconciliation(scope: MobileSessionMarkdownAc
     setAgentSessionHistorySupported,
     setAgentSessionHostSupport,
     setQuickCommandsSupported,
-    setQuickCommandsAcceptLongPrompts,
+    setQuickCommandAgentPromptMaxLength,
     nativeChatStream,
     fetchTerminals,
     applySessionTabs,
@@ -154,7 +157,7 @@ export function useMobileSessionTabReconciliation(scope: MobileSessionMarkdownAc
       setAgentSessionHistorySupported(null)
       setAgentSessionHostSupport(null)
       setQuickCommandsSupported(null)
-      setQuickCommandsAcceptLongPrompts(false)
+      setQuickCommandAgentPromptMaxLength(MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH)
       setShowQuickCommands(false)
       hostQueryReplyInputSupportedRef.current = false
       return
@@ -165,7 +168,7 @@ export function useMobileSessionTabReconciliation(scope: MobileSessionMarkdownAc
     setAgentSessionHistorySupported(null)
     setAgentSessionHostSupport(null)
     setQuickCommandsSupported(null)
-    setQuickCommandsAcceptLongPrompts(false)
+    setQuickCommandAgentPromptMaxLength(MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH)
     setShowQuickCommands(false)
     hostQueryReplyInputSupportedRef.current = false
     // Why: the probe retries — a relay→direct cutover or request timeout rejects
@@ -175,9 +178,7 @@ export function useMobileSessionTabReconciliation(scope: MobileSessionMarkdownAc
       setAgentSessionHistorySupported(capabilities.includes(MOBILE_AI_VAULT_CAPABILITY))
       setAgentSessionHostSupport(structuredAgentSessionHostSupport(capabilities))
       setQuickCommandsSupported(supportsMobileQuickCommands(capabilities))
-      setQuickCommandsAcceptLongPrompts(
-        capabilities.includes(TERMINAL_QUICK_COMMAND_LONG_PROMPTS_RUNTIME_CAPABILITY)
-      )
+      setQuickCommandAgentPromptMaxLength(terminalQuickCommandAgentPromptMaxLength(capabilities))
       // Why: hosts without this capability strip inputKind from terminal.send,
       // so a forwarded xterm reply would become floor-stealing shell input.
       hostQueryReplyInputSupportedRef.current = capabilities.includes(

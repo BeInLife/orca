@@ -38,6 +38,7 @@ export const TerminalQuickCommandUpdateItem = z.union([
       agent: z.custom(supportsTerminalAgentQuickCommand, {
         message: 'Agent does not support prompt commands'
       }),
+      // Bounded where every save lands (main's settings update), with the reason in its refusal.
       prompt: z.string(),
       scope: TerminalQuickCommandScopeUpdate.optional()
     })
@@ -47,7 +48,7 @@ export const TerminalQuickCommandUpdateItem = z.union([
 export const TerminalQuickCommandsUpdate = z
   .object({
     // Why: a single host-side mutation preserves unrelated desktop/mobile edits
-    // and avoids retransmitting the full ~240 KB list for every small change.
+    // and avoids retransmitting the full, multi-megabyte list for every small change.
     mutation: z.union([
       z
         .object({

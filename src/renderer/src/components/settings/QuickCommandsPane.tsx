@@ -398,7 +398,7 @@ export function QuickCommandsPane({
           repos={hostRepos}
           defaultAdvancedOpen
           agentPromptMaxLength={getTerminalQuickCommandHostPromptMaxLength(
-            { runtimeTerminalQuickCommands: runtimeCommands },
+            { runtimeStatusByEnvironmentId: runtimeStatuses },
             editor.hostId
           )}
           onOpenChange={(open) => !open && setEditor(null)}
