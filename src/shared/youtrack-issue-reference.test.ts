@@ -16,7 +16,9 @@ describe('parseYouTrackIssueReference', () => {
     expect(parseYouTrackIssueReference(`${BASE}/issue/PROJ-81/some-slug`, BASE)).toBe('PROJ-81')
     expect(parseYouTrackIssueReference(`${BASE}/issue/proj-81`, BASE)).toBe('PROJ-81')
     expect(parseYouTrackIssueReference('https://other.example.com/issue/PROJ-81', BASE)).toBeNull()
-    expect(parseYouTrackIssueReference('https://acme.atlassian.net/browse/PROJ-81', BASE)).toBeNull()
+    expect(
+      parseYouTrackIssueReference('https://acme.atlassian.net/browse/PROJ-81', BASE)
+    ).toBeNull()
   })
 })
 

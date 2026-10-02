@@ -72,7 +72,9 @@ describe('buildFieldPayload', () => {
   })
 
   it('converts scalar inputs to the typed values YouTrack stores', () => {
-    expect(buildFieldPayload(schema({ name: 'Estimation', kind: 'period' }), ['1d 2h'])).toMatchObject({
+    expect(
+      buildFieldPayload(schema({ name: 'Estimation', kind: 'period' }), ['1d 2h'])
+    ).toMatchObject({
       payload: { $type: 'PeriodIssueCustomField', value: { minutes: 600 } }
     })
     expect(buildFieldPayload(schema({ name: 'Due', kind: 'date' }), ['2026-10-31'])).toMatchObject({
