@@ -9,6 +9,7 @@ import { ExternalLink, MonitorUp, Pencil, StickyNote } from 'lucide-react'
 import { toast } from 'sonner'
 import { LinearIcon } from '@/components/icons/LinearIcon'
 import { JiraIcon } from '@/components/icons/JiraIcon'
+import { YouTrackIcon } from '@/components/icons/YouTrackIcon'
 import { SelectedTextCopyMenu } from '@/components/SelectedTextCopyMenu'
 import { WORKTREE_NATIVE_CONTEXT_MENU_ATTR } from './WorktreeContextMenu'
 import {
@@ -305,19 +306,35 @@ export function WorktreeCardDetailsHover({
               {jiraIssue && (
                 <WorktreeCardDetailSection>
                   <DetailHeader
-                    icon={<JiraIcon className="size-3 text-muted-foreground" />}
+                    icon={
+                      jiraIssue.provider === 'youtrack' ? (
+                        <YouTrackIcon className="size-3 text-muted-foreground" />
+                      ) : (
+                        <JiraIcon className="size-3 text-muted-foreground" />
+                      )
+                    }
                     onAddReference={onManageLinks ? dismissAndRun(onManageLinks) : undefined}
-                    label={translate(
-                      'auto.components.sidebar.WorktreeCardMeta.jiraIssue',
-                      'Jira {{value0}}',
-                      { value0: jiraIssue.identifier }
-                    )}
+                    label={
+                      jiraIssue.provider === 'youtrack'
+                        ? translate('youtrack.sidebar.issue', 'YouTrack {{value0}}', {
+                            value0: jiraIssue.identifier
+                          })
+                        : translate(
+                            'auto.components.sidebar.WorktreeCardMeta.jiraIssue',
+                            'Jira {{value0}}',
+                            { value0: jiraIssue.identifier }
+                          )
+                    }
                     actions={
                       <MetadataActionIcon
-                        label={translate(
-                          'auto.components.sidebar.WorktreeCardMeta.viewOnJira',
-                          'View on Jira'
-                        )}
+                        label={
+                          jiraIssue.provider === 'youtrack'
+                            ? translate('youtrack.sidebar.viewIssue', 'View in YouTrack')
+                            : translate(
+                                'auto.components.sidebar.WorktreeCardMeta.viewOnJira',
+                                'View on Jira'
+                              )
+                        }
                         href={jiraIssue.url}
                         workspaceId={workspace?.id}
                       >

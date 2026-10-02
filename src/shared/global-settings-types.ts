@@ -354,6 +354,8 @@ export type GlobalSettings = GlobalSettingsBase & {
   visibleTaskProviders: TaskProvider[]
   /** Why: one-shot guard to make Jira visible for existing profiles once, without re-adding after a later opt-out. */
   visibleTaskProvidersDefaultedForJira: boolean
+  /** Same one-shot guard for YouTrack (fork-only provider). Optional so older stored settings stay valid. */
+  visibleTaskProvidersDefaultedForYouTrack?: boolean
   /** Repo selection: null includes all present/future repos; arrays freeze a subset, dropping ineligible ids on load and treating empty as null. */
   defaultRepoSelection: string[] | null
   /** Linear team selection: null includes all; arrays freeze selected team IDs, matching defaultRepoSelection. */
