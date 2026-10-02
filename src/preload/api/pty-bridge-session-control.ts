@@ -77,6 +77,8 @@ export const ptySessionControlApi = {
   },
   writeAccepted: (id: string, data: string, inputKind: TerminalInputKind): Promise<boolean> =>
     ipcRenderer.invoke('pty:writeAccepted', { id, data, inputKind }),
+  deliverAgentLaunchPrompt: (id: string, text: string): Promise<boolean> =>
+    ipcRenderer.invoke('pty:deliverAgentLaunchPrompt', { id, text }),
   onWriteUnavailable: (callback: (payload: { id: string }) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: string }): void =>
       callback(payload)

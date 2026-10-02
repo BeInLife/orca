@@ -266,7 +266,9 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
         sessionOptions: this.toAgentSessionOptions(opts.launchPreferences)
       }),
       prompt: opts.startupPrompt ?? '',
-      allowEmptyPromptLaunch: true
+      allowEmptyPromptLaunch: true,
+      // The caller of a startup prompt delivers whatever the command cannot carry, after ready.
+      deliverOversizedPromptAfterReady: true
     })
     if (!startupPlan) {
       // Why: an explicit agent that yields no plan would otherwise spawn a bare
@@ -276,11 +278,6 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       }
       return opts
     }
-    // A prompt this launch command cannot carry has nowhere to go from here — the create returns
-    // options, not a live PTY — so refuse rather than spawn the agent and drop the text.
-    if (opts.startupPrompt && startupPlan.followupPrompt) {
-      throw new Error(`Agent ${agent} does not take a startup prompt on its launch command.`)
-    }
 
     return {
       ...opts,
@@ -289,6 +286,8 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       launchConfig: startupPlan.launchConfig,
       launchAgent: agent,
       startupCommandDelivery: startupPlan.startupCommandDelivery,
+      // Reported, not refused: the create returns before a PTY exists, so the caller delivers it.
+      ...(opts.startupPrompt && startupPlan.followupPrompt ? { startupPromptDeferred: true } : {}),
       // A bare command the user typed stays out of launch accounting, as before.
       ...(opts.startupAgent ? { telemetry: agentStartedTelemetry(agent, opts.launchSource) } : {})
     }

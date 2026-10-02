@@ -131,6 +131,12 @@ export type RuntimeCreateAgentSessionRequest = {
   agent: TuiAgent
   prompt?: string
   promptDelivery?: AgentPromptDelivery
+  /**
+   * The caller delivers a prompt the host's launch command cannot carry, so the host starts the
+   * agent clean and reports `terminal.startupPromptDeferred`. Hosts without
+   * `terminal.quick-commands.long-prompts.v1` refuse the field (the schema is strict).
+   */
+  deferOversizedPrompt?: true
   /** Explicit client override. Omission keeps launch defaults host-owned. */
   agentArgs?: string | null
   launchPreferences?: AgentLaunchPreferences

@@ -12,8 +12,8 @@ import {
 import { TUI_AGENT_CONFIG } from './tui-agent-config'
 import type { StartupCommandDelivery } from './codex-startup-delivery'
 import { buildSleepingAgentLaunchConfig } from './sleeping-agent-launch-config'
-import { planHermesStartupQuery } from './hermes-startup-query'
-import { agentLaunchCommandFitsPlatform } from './agent-launch-command-platform-limit'
+import { buildHermesStartupQuery, hermesStartupQueryFits } from './hermes-startup-query'
+import { launchCommandFits } from './agent-launch-command-line-budget'
 import type { TuiAgent } from './tui-agent'
 import type { SessionOptionValue } from './native-chat-session-options'
 import { resolveAgentLaunchCommand } from './tui-agent-launch-command'
@@ -39,7 +39,7 @@ function appliedSessionOptionProps(values: Record<string, SessionOptionValue>) {
   return Object.keys(values).length > 0 ? { sessionOptions: { ...values } } : {}
 }
 
-export function buildAgentStartupPlan(args: {
+type AgentStartupPlanArgs = {
   agent: TuiAgent
   prompt: string
   cmdOverrides: Partial<Record<TuiAgent, string>>
@@ -53,7 +53,51 @@ export function buildAgentStartupPlan(args: {
   /** Why: SSH remotes deploy the CLI shim as plain `orca`, so the Linux-only
    * `orca-ide` rename must be skipped for remote launches. */
   isRemote?: boolean
-}): AgentStartupPlan | null {
+  /**
+   * Set by callers that write `followupPrompt` through the host's agent-prompt writer: a prompt
+   * the launch command cannot carry becomes a clean launch plus `followupPrompt`. Without it a
+   * too-long command is returned as built (Hermes keeps its refusal), because other callers
+   * would drop or mangle the followup.
+   */
+  deliverOversizedPromptAfterReady?: boolean
+}
+
+/**
+ * The launch for an agent and its startup prompt. `followupPrompt` is the text the command does
+ * not carry — the agent takes no prompt argument, or the opted-in prompt is too long — and is
+ * owed to the live TUI after it is ready.
+ */
+export function buildAgentStartupPlan(args: AgentStartupPlanArgs): AgentStartupPlan | null {
+  const plan = buildPromptCarryingStartupPlan(args)
+  const trimmedPrompt = args.prompt.trim()
+  if (
+    !plan ||
+    !trimmedPrompt ||
+    plan.followupPrompt !== null ||
+    startupPlanFits(plan, args.platform)
+  ) {
+    return plan
+  }
+  if (!args.deliverOversizedPromptAfterReady) {
+    return TUI_AGENT_CONFIG[args.agent].promptInjectionMode === 'hermes-query' ? null : plan
+  }
+  const cleanLaunch = buildPromptCarryingStartupPlan({
+    ...args,
+    prompt: '',
+    allowEmptyPromptLaunch: true
+  })
+  return cleanLaunch ? { ...cleanLaunch, followupPrompt: trimmedPrompt } : null
+}
+
+function startupPlanFits(plan: AgentStartupPlan, platform: NodeJS.Platform): boolean {
+  // Why: Hermes carries its query in the environment, judged against the env-block budget.
+  if (TUI_AGENT_CONFIG[plan.agent].promptInjectionMode === 'hermes-query') {
+    return hermesStartupQueryFits({ command: plan.launchCommand, env: plan.env ?? {} }, platform)
+  }
+  return launchCommandFits({ command: plan.launchCommand, env: plan.env, platform })
+}
+
+function buildPromptCarryingStartupPlan(args: AgentStartupPlanArgs): AgentStartupPlan | null {
   const { agent, prompt, cmdOverrides, platform, allowEmptyPromptLaunch = false } = args
   const shell = resolveStartupShell(platform, args.shell)
   const trimmedPrompt = prompt.trim()
@@ -128,7 +172,7 @@ export function buildAgentStartupPlan(args: {
   }
 
   if (config.promptInjectionMode === 'hermes-query') {
-    const queryPlan = planHermesStartupQuery({
+    const queryPlan = buildHermesStartupQuery({
       baseCommand: baseCommand.command,
       agentArgs: args.agentArgs,
       prompt: trimmedPrompt,
@@ -281,10 +325,7 @@ export function buildAgentDraftLaunchPlan(args: {
       env: { ...args.agentEnv, [config.draftPromptEnvVar]: trimmed }
     }
   }
-  if (
-    !plan ||
-    !agentLaunchCommandFitsPlatform({ command: plan.launchCommand, env: plan.env, platform })
-  ) {
+  if (!plan || !launchCommandFits({ command: plan.launchCommand, env: plan.env, platform })) {
     return null
   }
   return plan

@@ -1,4 +1,5 @@
 import { encodePowerShellCommand } from './powershell-command-encoding'
+import { LAUNCH_ENV_MAX_CHARS } from './agent-launch-command-line-budget'
 import {
   buildShellCommandFromArgv,
   isPosixStartupShell,
@@ -7,7 +8,6 @@ import {
   type AgentStartupShell
 } from './tui-agent-startup-shell'
 
-const QUERY_ENV_LIMIT = 24_000
 const QUERY_PLACEHOLDER = '__ORCA_HERMES_STARTUP_QUERY__'
 const QUERY_ARG_PLACEHOLDER = `--query=${QUERY_PLACEHOLDER}`
 const POSIX_QUERY_VARIABLE = '__orca_hermes_startup_query'
@@ -166,7 +166,7 @@ function buildQueryCommand(argv: string[], shell: AgentStartupShell): string {
   return `sh -c ${quoteStartupArg(script, shell)}`
 }
 
-export function planHermesStartupQuery(args: {
+type HermesStartupQueryArgs = {
   baseCommand: string
   agentArgs?: string | null
   prompt: string
@@ -174,7 +174,12 @@ export function planHermesStartupQuery(args: {
   platform: NodeJS.Platform
   shell: AgentStartupShell
   isRemote?: boolean
-}): { command: string; env: Record<string, string> } | null {
+}
+
+/** The query launch for `prompt`, or null when the configured command cannot be parsed. */
+export function buildHermesStartupQuery(
+  args: HermesStartupQueryArgs
+): { command: string; env: Record<string, string> } | null {
   const baseArgv = tokenizeCommand(args.baseCommand, args.shell)
   const configuredArgv = args.agentArgs?.trim() ? tokenizeCommand(args.agentArgs, args.shell) : []
   if (!baseArgv || !configuredArgv) {
@@ -184,20 +189,28 @@ export function planHermesStartupQuery(args: {
   if (!argv) {
     return null
   }
-  const command = buildQueryCommand(argv, args.shell)
-  const env = {
-    ...args.agentEnv,
-    [ORCA_HERMES_STARTUP_QUERY_ENV]: args.prompt
+  return {
+    command: buildQueryCommand(argv, args.shell),
+    env: {
+      ...args.agentEnv,
+      [ORCA_HERMES_STARTUP_QUERY_ENV]: args.prompt
+    }
   }
-  const envSize = Object.entries(env).reduce((total, [key, value]) => {
-    if (args.platform === 'win32') {
+}
+
+export function hermesStartupQueryFits(
+  query: { command: string; env: Record<string, string> },
+  platform: NodeJS.Platform
+): boolean {
+  const envSize = Object.entries(query.env).reduce((total, [key, value]) => {
+    if (platform === 'win32') {
       return total + key.length + value.length + 2
     }
     return total + new TextEncoder().encode(`${key}=${value}`).byteLength + 1
   }, 0)
   const commandSize =
-    args.platform === 'win32' ? command.length : new TextEncoder().encode(command).byteLength
+    platform === 'win32' ? query.command.length : new TextEncoder().encode(query.command).byteLength
   // Why: WSL plans execute as Linux but cross the Windows environment block;
   // the conservative shared bound is safe for every transport host.
-  return commandSize + envSize <= QUERY_ENV_LIMIT ? { command, env } : null
+  return commandSize + envSize <= LAUNCH_ENV_MAX_CHARS
 }

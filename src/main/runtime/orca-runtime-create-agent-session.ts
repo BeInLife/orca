@@ -64,7 +64,8 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
           request.placement?.tabId ?? null,
           request.placement?.leafId ?? null,
           request.viewMode ?? null,
-          ...(request.terminalKittyKeyboardProtocol === true ? ['kitty-keyboard'] : [])
+          ...(request.terminalKittyKeyboardProtocol === true ? ['kitty-keyboard'] : []),
+          ...(request.deferOversizedPrompt === true ? ['defer-oversized-prompt'] : [])
         ])
       )
       .digest('base64url')
@@ -141,7 +142,8 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
             request.placement?.tabId ?? null,
             request.placement?.leafId ?? null,
             request.viewMode ?? null,
-            ...(request.terminalKittyKeyboardProtocol === true ? ['kitty-keyboard'] : [])
+            ...(request.terminalKittyKeyboardProtocol === true ? ['kitty-keyboard'] : []),
+            ...(request.deferOversizedPrompt === true ? ['defer-oversized-prompt'] : [])
           ])
         )
         .digest('base64url')
@@ -165,7 +167,8 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
           : buildAgentStartupPlan({
               ...startupArgs,
               prompt: request.prompt ?? '',
-              allowEmptyPromptLaunch: true
+              allowEmptyPromptLaunch: true,
+              ...(request.deferOversizedPrompt ? { deliverOversizedPromptAfterReady: true } : {})
             })
       if (!startup) {
         throw new Error('agent_session_identity_required')
@@ -221,7 +224,15 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
         }
         throw error
       }
-      return { terminal, disposition: 'created' }
+      // Only an opted-in caller is told; it delivers what the command did not carry.
+      const deferred =
+        request.deferOversizedPrompt === true &&
+        'followupPrompt' in startup &&
+        startup.followupPrompt !== null
+      return {
+        terminal: deferred ? { ...terminal, startupPromptDeferred: true } : terminal,
+        disposition: 'created'
+      }
     })()
     this.agentSessionCreateOperations.set(operationKey, {
       fingerprint: requestFingerprint,

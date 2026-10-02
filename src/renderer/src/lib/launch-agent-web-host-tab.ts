@@ -3,6 +3,7 @@ import { useAppStore } from '@/store'
 import {
   createWebRuntimeAgentSessionTerminal,
   createWebRuntimeAgentSessionTerminalWithLaunchDraft,
+  createWebRuntimeAgentSessionTerminalWithPrompt,
   createWebRuntimeSessionTerminal,
   isWebTerminalSurfaceTabId
 } from '@/runtime/web-runtime-session'
@@ -12,6 +13,7 @@ import type { TuiAgent } from '../../../shared/tui-agent'
 import type { AgentPromptDelivery } from '../../../shared/agent-session-host-authority'
 import { translate } from '@/i18n/i18n'
 import { toAgentLaunchPreferences } from '../../../shared/agent-launch-preferences'
+import { showPromptNotSentNotice } from '@/lib/launch-agent-paste-timeout-notice'
 
 function removeStaleLocalAgentTabsForWebHostLaunch(worktreeId: string): void {
   const state = useAppStore.getState()
@@ -140,7 +142,20 @@ export function launchAgentInWebHostTab(args: {
       launchDraft: prompt
     }).then((outcome) => handleCreation({ outcome, promptDelivered: outcome.status === 'created' }))
   }
+  if (hasPrompt) {
+    return createWebRuntimeAgentSessionTerminalWithPrompt({ ...launch, prompt }).then(
+      ({ outcome, promptDelivered }) => {
+        const result = handleCreation({ outcome, promptDelivered })
+        if (outcome.status === 'failed' || promptDelivered) {
+          return result
+        }
+        // The host started the agent but its deferred prompt did not land; say so (L5).
+        showPromptNotSentNotice(agent, true)
+        return { delivered: false, failureNotified: true }
+      }
+    )
+  }
   return createWebRuntimeSessionTerminal(launch).then((outcome) =>
-    handleCreation({ outcome, promptDelivered: outcome.status === 'created' && hasPrompt })
+    handleCreation({ outcome, promptDelivered: false })
   )
 }

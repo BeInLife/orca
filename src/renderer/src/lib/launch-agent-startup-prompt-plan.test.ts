@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { planLaunchAgentStartupPrompt } from './launch-agent-startup-prompt-plan'
 
-function plan(prompt: string, platform: NodeJS.Platform) {
+function plan(prompt: string, platform: NodeJS.Platform, deliverOversizedPromptAfterReady = true) {
   return planLaunchAgentStartupPrompt({
     base: { agent: 'claude', cmdOverrides: {}, platform },
     prompt,
     promptDelivery: 'auto-submit',
-    isFollowupPath: false
+    isFollowupPath: false,
+    deliverOversizedPromptAfterReady
   })
 }
 
@@ -24,7 +25,31 @@ describe('planLaunchAgentStartupPrompt', () => {
 
     expect(result.pasteDraftAfterLaunch).toBe(prompt)
     expect(result.submitPastedPrompt).toBe(true)
+    // The host's agent-prompt writer delivers it, not the renderer's paste.
+    expect(result.deliverPastedPromptThroughHost).toBe(true)
     expect(result.startupPlan?.launchCommand).not.toContain('Review this PR')
+    expect(result.startupPlan?.followupPrompt).toBeNull()
+  })
+
+  it('judges Windows against cmd.exe, whatever the shell', () => {
+    const prompt = 'x'.repeat(7700)
+    const result = planLaunchAgentStartupPrompt({
+      base: { agent: 'claude', cmdOverrides: {}, platform: 'win32', shell: 'powershell' },
+      prompt,
+      promptDelivery: 'auto-submit',
+      isFollowupPath: false,
+      deliverOversizedPromptAfterReady: true
+    })
+
+    expect(result.pasteDraftAfterLaunch).toBe(prompt)
+  })
+
+  it('leaves a paired host to decide, building the prompt into the command as before', () => {
+    const prompt = 'Review this PR. '.repeat(1600)
+    const result = plan(prompt, 'win32', false)
+
+    expect(result.pasteDraftAfterLaunch).toBeNull()
+    expect(result.startupPlan?.launchCommand).toContain('Review this PR')
   })
 
   it('keeps the same prompt on the launch command where the shell can take it', () => {

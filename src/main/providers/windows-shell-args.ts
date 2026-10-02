@@ -13,9 +13,10 @@ import {
   getPowerShellOsc133Bootstrap
 } from '../powershell-osc133-bootstrap'
 import { quoteStartupArg } from '../../shared/tui-agent-startup-shell'
+import { CMD_EXE_COMMAND_LINE_MAX_CHARS } from '../../shared/agent-launch-command-line-budget'
 
-/** cmd.exe's own documented ceiling; callers that go through sshd budget below it. */
-export const CMD_EXE_COMMAND_LINE_MAX_CHARS = 8191
+// Callers that go through sshd budget below cmd.exe's ceiling.
+export { CMD_EXE_COMMAND_LINE_MAX_CHARS }
 const STARTUP_COMMAND_TEXT_MAX_CHARS = 6000
 const POWERSHELL_ENCODED_COMMAND_ARG_MAX_CHARS = 28_000
 const CMD_UTF8_SETUP_COMMAND = 'chcp 65001 > nul'

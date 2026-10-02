@@ -156,19 +156,22 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     agentEnv,
     sessionOptions: resolveInitialNativeChatSessionOptions(store.settings, initialViewModeOptions)
   }
-  const { startupPlan, pasteDraftAfterLaunch, submitPastedPrompt } = planLaunchAgentStartupPrompt({
-    base: startupPlanBase,
-    prompt: trimmedPrompt,
-    promptDelivery,
-    isFollowupPath
-  })
+  const runtimeEnvironmentId = getRuntimeEnvironmentIdForWorktree(store, worktreeId)
+  const { startupPlan, pasteDraftAfterLaunch, submitPastedPrompt, deliverPastedPromptThroughHost } =
+    planLaunchAgentStartupPrompt({
+      base: startupPlanBase,
+      prompt: trimmedPrompt,
+      promptDelivery,
+      isFollowupPath,
+      // Why: a paired host plans its own command line; this process owns only local launches.
+      deliverOversizedPromptAfterReady: runtimeEnvironmentId === null
+    })
   let promptDeliveryResult: Promise<{ delivered: boolean; failureNotified: boolean }> | undefined
 
   if (!startupPlan) {
     return null
   }
 
-  const runtimeEnvironmentId = getRuntimeEnvironmentIdForWorktree(store, worktreeId)
   if (isWebRuntimeSessionActive(runtimeEnvironmentId)) {
     if (beforeSurfaceOpen?.({ kind: 'host-published' }) === false) {
       return null
@@ -298,6 +301,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       agent,
       submit: submitPastedPrompt,
       forcePaste: true,
+      ...(deliverPastedPromptThroughHost ? { throughHostWriter: true } : {}),
       onTimeout: timeoutNotice.onTimeout,
       ...(onPromptDeliveryUnconfirmed ? { onUnconfirmedDelivery: onPromptDeliveryUnconfirmed } : {})
     }).then((delivered) => {

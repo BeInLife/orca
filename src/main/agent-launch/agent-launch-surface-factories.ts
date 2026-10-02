@@ -25,8 +25,8 @@ export type AgentLaunchSurfaceFactory = {
     worktreeId: string
     agent: TuiAgent
     options?: Readonly<Record<string, unknown>>
-    /** Set only for an agent whose CLI takes the prompt on argv, so the text is in the process's
-     *  arguments at exec time rather than raced into its composer afterwards. */
+    /** Folded into the launch command when the built command can carry it, so the text is in the
+     *  process's arguments at exec time rather than raced into its composer afterwards. */
     startupPrompt?: string
     /** Replaces the settings default for this launch only; `null` means no arguments at all. */
     agentArgs?: string | null
@@ -40,6 +40,8 @@ export type AgentLaunchSurfaceFactory = {
     /** The pane this create minted; a factory whose runtime reports none omits it, never invents. */
     paneKey?: string
     warning?: string
+    /** The command did not carry `startupPrompt` (no prompt argument, or too long for the host). */
+    startupPromptDeferred?: boolean
   }>
   /**
    * Commits the launch text as the session's first turn, answering with the transcript row's id.
@@ -56,9 +58,9 @@ export type AgentLaunchSurfaceFactory = {
   /**
    * Writes the launch text into a terminal agent's live PTY, answering whether it landed.
    *
-   * The other half of `startupPrompt`, for the two cases argv cannot serve: a `stdin-after-start`
-   * agent, whose CLI takes no prompt argument, and a reused terminal, whose process was already
-   * running before this launch existed. `false` for every failure, on the same rule the structured
+   * The other half of `startupPrompt`, for what argv cannot serve: a prompt the create deferred
+   * (no prompt argument, or too long for the host's command line), and a reused terminal, whose
+   * process was already running before this launch existed. `false` for every failure, on the same rule the structured
    * twin follows — a launch whose agent is running must not fail because its text did not land.
    */
   deliverTerminalPrompt?(args: { handle: string; prompt: AgentLaunchPrompt }): Promise<boolean>

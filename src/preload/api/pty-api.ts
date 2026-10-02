@@ -78,6 +78,8 @@ export type PtyApi = {
   }>
   write: (id: string, data: string, inputKind: TerminalInputKind) => void
   writeAccepted: (id: string, data: string, inputKind: TerminalInputKind) => Promise<boolean>
+  /** Writes a deferred launch prompt through the host's agent-prompt writer once the TUI is ready. */
+  deliverAgentLaunchPrompt: (id: string, text: string) => Promise<boolean>
   onWriteUnavailable?: (callback: (payload: { id: string }) => void) => () => void
   resize: (id: string, cols: number, rows: number) => void
   claimViewport: (id: string, cols: number, rows: number) => void

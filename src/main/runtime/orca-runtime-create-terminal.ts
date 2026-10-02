@@ -291,6 +291,7 @@ export class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTerminalCreate
             ? { agentSessionDisposition: result.agentSessionEnsure.disposition }
             : {}),
           ...(adoptedStablePane ? { isReattach: true as const } : {}),
+          ...(launchOpts.startupPromptDeferred ? { startupPromptDeferred: true as const } : {}),
           ...(warning ? { warning } : {})
         }
       } finally {

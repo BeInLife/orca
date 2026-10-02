@@ -3,8 +3,8 @@
  *
  * This is the argv half of terminal prompt delivery, and the reason it is worth pinning is that
  * its failure mode is silent: `buildAgentStartupPlan` answers a prompt it cannot fold by returning
- * a bare command plus a `followupPrompt`, and this resolver returns options, not a live PTY, so a
- * dropped `followupPrompt` would spawn the agent with no prompt and no error anywhere.
+ * a bare command plus a `followupPrompt`, and this resolver returns options, not a live PTY, so the
+ * create must report the deferral or the agent would start with no prompt and no error anywhere.
  */
 
 import { describe, expect, it, vi } from 'vitest'
@@ -73,17 +73,51 @@ describe('a terminal create that is handed a launch prompt', () => {
     expect(spawnedCommand(spawn)).not.toContain('summarize')
   })
 
-  it('refuses a prompt the launch command cannot carry instead of dropping it', async () => {
+  it('reports a prompt the agent takes only after start instead of dropping it', async () => {
     const { runtime, spawn } = runtimeWithAgentLaunch()
 
-    // `aider` takes its prompt after start, so there is no argument to fold it into and this
-    // resolver has no PTY to write to. Spawning anyway would lose the text with no error.
-    await expect(
-      runtime.createTerminal('id:wt-1', {
-        startupAgent: 'aider',
-        startupPrompt: 'summarize the diff'
-      })
-    ).rejects.toThrow(/does not take a startup prompt/)
-    expect(spawn).not.toHaveBeenCalled()
+    // `aider` takes its prompt after start, so there is no argument to fold it into; the create
+    // starts the agent clean and says so, and the caller delivers the text into the live PTY.
+    const created = await runtime.createTerminal('id:wt-1', {
+      startupAgent: 'aider',
+      startupPrompt: 'summarize the diff'
+    })
+
+    expect(created.startupPromptDeferred).toBe(true)
+    expect(spawnedCommand(spawn)).not.toContain('summarize the diff')
+  })
+
+  it('reports a prompt too long for the host command line instead of spawning it inline', async () => {
+    const { runtime, spawn } = runtimeWithAgentLaunch()
+    const prompt = 'p'.repeat(130 * 1024)
+
+    const created = await runtime.createTerminal('id:wt-1', {
+      startupAgent: 'claude',
+      startupPrompt: prompt
+    })
+
+    expect(created.startupPromptDeferred).toBe(true)
+    expect(spawnedCommand(spawn)).toContain('claude')
+    expect(spawnedCommand(spawn)).not.toContain('ppp')
+  })
+
+  it('reports nothing deferred when the command carries the prompt', async () => {
+    const { runtime } = runtimeWithAgentLaunch()
+
+    const created = await runtime.createTerminal('id:wt-1', {
+      startupAgent: 'claude',
+      startupPrompt: 'summarize the diff'
+    })
+
+    expect(created.startupPromptDeferred).toBeUndefined()
+  })
+
+  it('names the created terminal by its PTY, so a host write can reach a renderer-spawned pane', async () => {
+    const { runtime } = runtimeWithAgentLaunch()
+
+    const created = await runtime.createTerminal('id:wt-1', { startupAgent: 'claude' })
+
+    expect(runtime.resolveTerminalHandleForPty('pty-1')).toBe(created.handle)
+    expect(runtime.resolveTerminalHandleForPty('pty-unknown')).toBeNull()
   })
 })

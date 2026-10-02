@@ -7,7 +7,6 @@ import type { SleepingAgentLaunchConfig } from '../../shared/agent-session-resum
 import { isTuiAgentEnabled } from '../../shared/tui-agent-selection'
 import { buildAgentStartupPlan } from '../../shared/tui-agent-startup'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
-import { agentLaunchCommandFitsPlatform } from '../../shared/agent-launch-command-platform-limit'
 
 export class OrcaRuntimeWithResolveMobileSessionTerminalCommand extends OrcaRuntimeWithRunCreateMobileSessionTerminal {
   protected async resolveMobileSessionTerminalCommand(
@@ -47,13 +46,12 @@ export class OrcaRuntimeWithResolveMobileSessionTerminalCommand extends OrcaRunt
     if (!isTuiAgentEnabled(opts.agent, settings.disabledTuiAgents)) {
       throw new Error('Selected agent is disabled. Choose an enabled agent before creating.')
     }
-    const platform = this.getAgentLaunchPlatformForWorkspace(workspace)
     const startupPlan = buildAgentStartupPlan({
       ...resolveAgentStartupPlanInputs({
         agent: opts.agent,
         settings,
         // Why: mobile may be iOS while the shell host is Windows/macOS/Linux or SSH Linux; quote for the host shell.
-        platform,
+        platform: this.getAgentLaunchPlatformForWorkspace(workspace),
         // Why: SSH runs the CLI through the relay shim (plain `orca`), so the Linux-only `orca-ide` rename must not apply.
         isRemote: Boolean(workspace.connectionId)
       }),
@@ -65,20 +63,6 @@ export class OrcaRuntimeWithResolveMobileSessionTerminalCommand extends OrcaRunt
     }
     if (opts.agentPrompt && startupPlan.followupPrompt) {
       throw new Error(`Agent ${opts.agent} does not support startup prompt quick commands.`)
-    }
-    // Why: this path has no post-ready paste, so a prompt the host's command line cannot carry
-    // must fail here with a reason rather than as a broken shell line.
-    if (
-      opts.agentPrompt &&
-      !agentLaunchCommandFitsPlatform({
-        command: startupPlan.launchCommand,
-        env: startupPlan.env,
-        platform
-      })
-    ) {
-      throw new Error(
-        'This prompt is too long to start from mobile on this host. Run it from the desktop app.'
-      )
     }
     return {
       command: startupPlan.launchCommand,

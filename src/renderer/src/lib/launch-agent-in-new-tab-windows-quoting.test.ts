@@ -9,6 +9,7 @@ const mockCreateWebRuntimeAgentSessionTerminalWithLaunchDraft = vi.fn()
 const mockCreateTab = vi.fn()
 const mockQueueTabStartupCommand = vi.fn()
 const mockPasteDraftWhenAgentReady = vi.fn()
+const mockDeliverLaunchPromptThroughHost = vi.fn()
 
 const store = {
   activeRepoId: 'repo-1',
@@ -98,6 +99,10 @@ vi.mock('@/lib/agent-paste-draft', () => ({
   pasteDraftWhenAgentReady: mockPasteDraftWhenAgentReady
 }))
 
+vi.mock('@/lib/agent-launch-prompt-host-delivery', () => ({
+  deliverLaunchPromptThroughHost: mockDeliverLaunchPromptThroughHost
+}))
+
 vi.mock('@/lib/telemetry', () => ({
   track: vi.fn(),
   tuiAgentToAgentKind: (agent: string) => agent
@@ -156,6 +161,30 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     store.ptyIdsByTabId = {}
     mockCreateTab.mockReturnValue({ id: 'tab-1' })
     mockPasteDraftWhenAgentReady.mockResolvedValue(true)
+    mockDeliverLaunchPromptThroughHost.mockResolvedValue(true)
+  })
+
+  it('starts a local agent clean and has the host write a prompt cmd.exe could not carry', async () => {
+    const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
+    const prompt = 'x'.repeat(10_000)
+
+    const result = launchAgentInNewTab({
+      agent: 'claude',
+      worktreeId: 'wt-1',
+      prompt,
+      launchPlatform: 'win32'
+    })
+
+    expect(result?.pasteDraftAfterLaunch).toBe(true)
+    expect(mockQueueTabStartupCommand).toHaveBeenCalledWith(
+      'tab-1',
+      expect.objectContaining({ command: expect.not.stringContaining('xxx') })
+    )
+    await Promise.resolve()
+    expect(mockDeliverLaunchPromptThroughHost).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: 'tab-1', content: prompt })
+    )
+    expect(mockPasteDraftWhenAgentReady).not.toHaveBeenCalled()
   })
 
   it('forces oversized Windows drafts through the paired-host paste fallback without submitting', async () => {

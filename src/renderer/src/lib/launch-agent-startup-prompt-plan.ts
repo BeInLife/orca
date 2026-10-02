@@ -3,7 +3,6 @@ import {
   buildAgentStartupPlan,
   type AgentStartupPlan
 } from '@/lib/tui-agent-startup'
-import { agentLaunchCommandFitsPlatform } from '../../../shared/agent-launch-command-platform-limit'
 
 type StartupPlanBase = Omit<
   Parameters<typeof buildAgentStartupPlan>[0],
@@ -15,6 +14,8 @@ export type LaunchAgentStartupPromptPlan = {
   /** Text to paste once the TUI is ready; null when the launch command already carries it. */
   pasteDraftAfterLaunch: string | null
   submitPastedPrompt: boolean
+  /** The command could not carry the prompt, so the host's agent-prompt writer delivers it. */
+  deliverPastedPromptThroughHost: boolean
 }
 
 /**
@@ -28,15 +29,18 @@ export function planLaunchAgentStartupPrompt(args: {
   prompt: string
   promptDelivery: 'auto-submit' | 'draft' | 'submit-after-ready'
   isFollowupPath: boolean
+  /** Set when this host's writer delivers what the launch command cannot carry (local launches). */
+  deliverOversizedPromptAfterReady: boolean
 }): LaunchAgentStartupPromptPlan {
-  const { base, prompt, promptDelivery, isFollowupPath } = args
+  const { base, prompt, promptDelivery, isFollowupPath, deliverOversizedPromptAfterReady } = args
   const hasPrompt = prompt.length > 0
   const launchEmpty = (): AgentStartupPlan | null =>
     buildAgentStartupPlan({ ...base, prompt: '', allowEmptyPromptLaunch: true })
   const pasteAfterReady = (submit: boolean): LaunchAgentStartupPromptPlan => ({
     startupPlan: launchEmpty(),
     pasteDraftAfterLaunch: prompt,
-    submitPastedPrompt: submit
+    submitPastedPrompt: submit,
+    deliverPastedPromptThroughHost: false
   })
 
   if (hasPrompt && promptDelivery === 'submit-after-ready') {
@@ -64,7 +68,8 @@ export function planLaunchAgentStartupPrompt(args: {
         ...(draftLaunchPlan.env ? { env: draftLaunchPlan.env } : {})
       },
       pasteDraftAfterLaunch: null,
-      submitPastedPrompt: false
+      submitPastedPrompt: false,
+      deliverPastedPromptThroughHost: false
     }
   }
   if (hasPrompt && isFollowupPath) {
@@ -73,23 +78,22 @@ export function planLaunchAgentStartupPrompt(args: {
   const startupPlan = buildAgentStartupPlan({
     ...base,
     prompt: hasPrompt ? prompt : '',
-    allowEmptyPromptLaunch: !hasPrompt
+    allowEmptyPromptLaunch: !hasPrompt,
+    deliverOversizedPromptAfterReady
   })
-  if (
-    hasPrompt &&
-    startupPlan &&
-    !agentLaunchCommandFitsPlatform({
-      command: startupPlan.launchCommand,
-      env: startupPlan.env,
-      platform: base.platform
-    })
-  ) {
-    // Why: a prompt too long for the host's command line still reaches the TUI as a paste.
-    return pasteAfterReady(true)
+  if (hasPrompt && startupPlan?.followupPrompt) {
+    // Why: too long for the host's command line; the plan launched clean and the host writes it.
+    return {
+      startupPlan: { ...startupPlan, followupPrompt: null },
+      pasteDraftAfterLaunch: prompt,
+      submitPastedPrompt: true,
+      deliverPastedPromptThroughHost: true
+    }
   }
   return {
     startupPlan,
     pasteDraftAfterLaunch: null,
-    submitPastedPrompt: false
+    submitPastedPrompt: false,
+    deliverPastedPromptThroughHost: false
   }
 }

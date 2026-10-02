@@ -1,5 +1,6 @@
 import { agentDeliversDraftViaNativePrefill } from '@/lib/agent-native-draft-prefill'
 import { pasteDraftWhenAgentReady } from '@/lib/agent-paste-draft'
+import { deliverLaunchPromptThroughHost } from '@/lib/agent-launch-prompt-host-delivery'
 import { canMirrorLaunchDraftToNativeChat } from '@/lib/native-chat-launch-draft-mirrorability'
 import { isNativeChatSupportedAgent } from '@/lib/native-chat-supported-agent'
 import { useAppStore } from '@/store'
@@ -35,6 +36,8 @@ export function deliverLaunchPromptToAgentTab(args: {
   onTimeout?: () => void
   /** The paste was written without ever observing the agent's composer. */
   onUnconfirmedDelivery?: () => void
+  /** A submitted prompt the launch command could not carry; the host's writer delivers it. */
+  throughHostWriter?: boolean
 }): Promise<boolean> {
   const { tabId, agent, content, submit, forcePaste, timeoutMs, onTimeout, onUnconfirmedDelivery } =
     args
@@ -59,16 +62,20 @@ export function deliverLaunchPromptToAgentTab(args: {
   // native delivery, not a failure — don't flag the seeded bubble in that case.
   const deliversViaNativePrefill = agentDeliversDraftViaNativePrefill(agent, forcePaste)
 
-  return pasteDraftWhenAgentReady({
-    tabId,
-    content,
-    agent,
-    submit,
-    forcePaste,
-    timeoutMs,
-    onTimeout,
-    onUnconfirmedDelivery
-  }).then(
+  const delivery =
+    args.throughHostWriter && submit
+      ? deliverLaunchPromptThroughHost({ tabId, content, onTimeout })
+      : pasteDraftWhenAgentReady({
+          tabId,
+          content,
+          agent,
+          submit,
+          forcePaste,
+          timeoutMs,
+          onTimeout,
+          onUnconfirmedDelivery
+        })
+  return delivery.then(
     (delivered) => {
       if (shouldSeed && !delivered && !deliversViaNativePrefill) {
         useAppStore.getState().markNativeChatLaunchPromptFailed(tabId)

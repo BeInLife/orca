@@ -12,6 +12,11 @@ import {
 } from './agent-session-create-operation'
 import { runRemoteAgentSessionLaunch } from './remote-agent-session-launch'
 import { unwrapRuntimeRpcResult } from './runtime-rpc-client'
+import {
+  deferredLaunchPromptOf,
+  freshAgentSessionCreateParams,
+  negotiateLaunchPromptDeferral
+} from './web-runtime-agent-session-create-params'
 import { toRuntimeWorktreeSelector } from './runtime-worktree-selector'
 import { resolveWebRuntimeSessionEnvironmentId } from './web-runtime-session-workspace-routing'
 import { recordWebSessionFocusIntent } from './web-session-focus-intent'
@@ -81,8 +86,10 @@ export async function createWebRuntimeSessionTerminalResult(
   let hostCreated = false
   let createdTabId: string | undefined
   let createdLeafId: string | undefined
+  let deferredLaunchPrompt: CreatedWebRuntimeSessionTerminal['deferredLaunchPrompt']
   try {
     const agent = args.launchAgent ?? args.agent
+    const deferOversizedPrompt = await negotiateLaunchPromptDeferral(args, environmentId)
     const agentArgsOverride =
       args.agentArgs !== undefined ? args.agentArgs : args.launchConfig?.agentArgs
     if (agent) {
@@ -132,22 +139,12 @@ export async function createWebRuntimeSessionTerminalResult(
                     await callEnvironment({
                       method: 'terminal.createAgentSession',
                       params: withAgentSessionCreateOperationId(
-                        {
-                          ...(await keyboardOptions(environmentId)),
-                          worktree: toRuntimeWorktreeSelector(args.worktreeId),
+                        freshAgentSessionCreateParams(args, {
                           agent,
-                          ...(args.prompt ? { prompt: args.prompt } : {}),
-                          ...(args.promptDelivery ? { promptDelivery: args.promptDelivery } : {}),
-                          ...(agentArgsOverride !== undefined
-                            ? { agentArgs: agentArgsOverride }
-                            : {}),
-                          ...(args.launchPreferences
-                            ? { launchPreferences: args.launchPreferences }
-                            : {}),
-                          ...(args.cwd ? { startupCwd: args.cwd } : {}),
-                          ...(args.viewMode ? { viewMode: args.viewMode } : {}),
-                          presentation: 'background'
-                        },
+                          agentArgsOverride,
+                          keyboardOptions: await keyboardOptions(environmentId),
+                          deferOversizedPrompt
+                        }),
                         clientOperationId
                       ),
                       timeoutMs: 15_000
@@ -202,6 +199,7 @@ export async function createWebRuntimeSessionTerminalResult(
         }
       })
       hostCreated = true
+      deferredLaunchPrompt = deferredLaunchPromptOf(environmentId, created.terminal)
       createdTabId = created.terminal.tabId
       createdLeafId = legacyAlreadyPlacedInGroup
         ? created.terminal.leafId
@@ -286,7 +284,8 @@ export async function createWebRuntimeSessionTerminalResult(
     }
     return {
       outcome: { status: 'created' },
-      ...(createdTabId ? { hostTabId: createdTabId } : {})
+      ...(createdTabId ? { hostTabId: createdTabId } : {}),
+      ...(deferredLaunchPrompt ? { deferredLaunchPrompt } : {})
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -311,7 +310,8 @@ export async function createWebRuntimeSessionTerminalResult(
     // to retry with a new operation ID and can duplicate a fresh agent.
     return {
       outcome: hostCreated ? { status: 'created' } : { status: 'failed', message },
-      ...(createdTabId ? { hostTabId: createdTabId } : {})
+      ...(createdTabId ? { hostTabId: createdTabId } : {}),
+      ...(deferredLaunchPrompt ? { deferredLaunchPrompt } : {})
     }
   }
 }

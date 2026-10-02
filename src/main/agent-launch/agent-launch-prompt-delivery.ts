@@ -6,8 +6,8 @@
  * that turned out to be, and each surface takes it differently:
  *
  *   structured session  ->  committed to the transcript, named by a message id  ->  journaled
- *   terminal, argv CLI  ->  folded into the command that execs the agent        ->  handed-to-terminal
- *   terminal, no argv   ->  bracketed paste into the live PTY                   ->  handed-to-terminal
+ *   terminal, fits argv ->  folded into the command that execs the agent        ->  handed-to-terminal
+ *   terminal, otherwise ->  bracketed paste into the live PTY                   ->  handed-to-terminal
  *   anything unproven   ->                                                      ->  not-delivered
  *
  * The argv/PTY fork is not a preference. `argv` exists so multi-line and special-character text
@@ -92,14 +92,19 @@ export async function deliverTerminalLaunchPrompt(
   return delivered ? HANDED_TO_TERMINAL : NOT_DELIVERED
 }
 
-/** The launch text that has to reach a surface, or undefined when there is none to deliver. */
-function launchSubmitText(intent: AgentLaunchIntent): string | undefined {
+/**
+ * The launch text that has to reach a surface, or undefined when there is none to deliver. An
+ * existing workspace's terminal create takes it whole and reports what its command could not
+ * carry, so the decision is the built plan's, not the agent's.
+ */
+export function launchSubmitText(intent: AgentLaunchIntent): string | undefined {
   return intent.prompt?.delivery === 'submit' && intent.prompt.text ? intent.prompt.text : undefined
 }
 
 /**
- * The prompt a terminal's launch command should carry, which is an argv-mode agent's and only an
- * argv-mode agent's.
+ * The prompt a new worktree's startup command should carry, which is an argv-mode agent's and only
+ * an argv-mode agent's. Decided from the agent, before a plan exists: worktree creation still
+ * routes a plan's followup to its own writer, so it is only ever handed text argv takes.
  */
 export function argvLaunchPrompt(intent: AgentLaunchIntent): string | undefined {
   const text = launchSubmitText(intent)

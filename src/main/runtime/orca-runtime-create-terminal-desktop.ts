@@ -84,6 +84,7 @@ export async function createDesktopTerminal(
     worktreeId: worktreeId ?? '',
     title: reply.title,
     ...runtime.getPtyExecutionHostMetadata(runtime.handles.get(handle)?.ptyId ?? null),
-    surface: 'visible'
+    surface: 'visible',
+    ...(launchOpts.startupPromptDeferred ? { startupPromptDeferred: true as const } : {})
   }
 }

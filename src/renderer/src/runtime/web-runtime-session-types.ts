@@ -33,6 +33,8 @@ export type CreateWebRuntimeSessionTerminalArgs = {
   agentSessionKind?: 'fresh' | 'resume'
   prompt?: string
   promptDelivery?: AgentPromptDelivery
+  /** This caller delivers a prompt the host's launch command cannot carry (see the reply). */
+  deferOversizedPrompt?: boolean
   /** Explicit CLI override; omission leaves the remote host's defaults authoritative. */
   agentArgs?: string | null
   launchPreferences?: AgentLaunchPreferences
@@ -45,8 +47,14 @@ export type CreateWebRuntimeSessionTerminalArgs = {
 export type CreatedWebRuntimeSessionTerminal = {
   outcome: WebRuntimeTerminalCreateOutcome
   hostTabId?: string
+  /** The host started the agent without the prompt; the caller delivers it to this terminal. */
+  deferredLaunchPrompt?: { environmentId: string; terminal: string }
 }
 
-export type CreatedAgentTerminalIdentity = Pick<RuntimeTerminalCreate, 'tabId' | 'paneKey'> & {
+export type CreatedAgentTerminalIdentity = Pick<
+  RuntimeTerminalCreate,
+  'tabId' | 'paneKey' | 'startupPromptDeferred'
+> & {
   leafId?: string
+  handle?: string
 }

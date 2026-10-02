@@ -42,12 +42,14 @@ export type TerminalCreateOptions = {
   launchAgent?: TuiAgent
   startupAgent?: TuiAgent
   /**
-   * Initial text folded into `startupAgent`'s launch command, for an agent whose CLI takes a prompt
-   * argument. Not a general prompt channel: an agent that takes its text only after start has no
-   * launch command to carry it, and a caller that sets this for one is refused rather than having
-   * the prompt silently dropped. Post-start delivery belongs to whoever owns the live PTY.
+   * Initial text for `startupAgent`, folded into its launch command when the command can carry it.
+   * When it cannot — the agent takes no prompt argument, or the text is too long for the host's
+   * command line — the agent starts clean and the result reports `startupPromptDeferred`, so the
+   * caller delivers it into the live PTY.
    */
   startupPrompt?: string
+  /** Set by the runtime's launch resolution, never by a caller: see `startupPrompt`. */
+  startupPromptDeferred?: boolean
   /**
    * Replaces the Settings launch arguments for this `startupAgent` only; `null` means none at all.
    *

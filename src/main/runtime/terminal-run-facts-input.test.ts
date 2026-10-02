@@ -9,6 +9,8 @@ import type { RuntimePtyController } from './runtime-pty-controller-contract'
 import { writeOrchestrationPointerWithSettlement } from './orchestration/mailbox-pointer-pty-write'
 import { sendTerminalStreamInput } from './rpc/methods/terminal/terminal-input-delivery'
 import { makeStore } from './runtime-rpc-worktree-store-fixtures'
+import { RpcDispatcher } from './rpc/dispatcher'
+import { TERMINAL_METHODS } from './rpc/methods/terminal'
 import {
   pasteWorktreeStartupDraftWhenReady,
   sendWorktreeStartupFollowupWhenReady,
@@ -145,6 +147,35 @@ describe('run facts: the controller write funnel', () => {
 
     await run.runtime.sendTerminal(run.handle, { text: 'y' }, { inputKind: 'driving' })
     expect(run.firstUserInputAt()).not.toBeNull()
+  })
+
+  it('reads a deferred launch prompt sent over terminal.send as launch input, not typing', async () => {
+    vi.useFakeTimers()
+    const run = await createFreshRun()
+    vi.spyOn(run.runtime, 'waitForTerminal').mockResolvedValue({
+      handle: run.handle,
+      condition: 'tui-idle',
+      satisfied: true,
+      status: 'running',
+      exitCode: null
+    })
+    const sendTerminal = vi.spyOn(run.runtime, 'sendTerminal')
+    const dispatcher = new RpcDispatcher({ runtime: run.runtime, methods: TERMINAL_METHODS })
+
+    const response = dispatcher.dispatch({
+      id: 'request',
+      authToken: 'token',
+      method: 'terminal.send',
+      params: { terminal: run.handle, text: 'first line\nsecond line', launchPrompt: true }
+    })
+    await vi.runAllTimersAsync()
+    await response
+
+    // `aider` is neither Claude nor Codex, whose plain sends go out raw with Enter in the same write.
+    expect(sendTerminal).not.toHaveBeenCalled()
+    expect(run.writes[0]?.data.startsWith('\x1b[200~')).toBe(true)
+    expect(run.kinds.every((kind) => kind === 'launch')).toBe(true)
+    expect(run.firstUserInputAt()).toBeNull()
   })
 
   it('records a mailbox pointer, which drives the running agent', async () => {

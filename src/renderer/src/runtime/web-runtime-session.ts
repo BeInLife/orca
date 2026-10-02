@@ -11,7 +11,8 @@ export type { WebRuntimeTerminalCreateOutcome } from './web-runtime-session-type
 export {
   createWebRuntimeSessionTerminal,
   createWebRuntimeAgentSessionTerminal,
-  createWebRuntimeAgentSessionTerminalWithLaunchDraft
+  createWebRuntimeAgentSessionTerminalWithLaunchDraft,
+  createWebRuntimeAgentSessionTerminalWithPrompt
 } from './web-runtime-terminal-creation'
 export { createWebRuntimeSessionBrowserTab } from './web-runtime-browser-creation'
 export { refreshWebRuntimeSessionTabsSnapshot } from './web-runtime-session-snapshot'

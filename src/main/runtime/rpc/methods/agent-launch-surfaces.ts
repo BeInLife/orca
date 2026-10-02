@@ -125,8 +125,8 @@ export function agentLaunchSurfaceFactory(
         // The agent id is not a shell command — `cursor` is the desktop app, its CLI is
         // `cursor-agent` — so the runtime builds the configured launcher.
         startupAgent: agent,
-        // Folded into that launcher by the same startup plan a new agent tab is built from, so an
-        // argv agent's prompt is in its argv at exec time rather than typed in afterwards.
+        // Folded into that launcher by the same startup plan a new agent tab is built from when the
+        // command can carry it; otherwise the create reports it deferred.
         ...(startupPrompt ? { startupPrompt } : {}),
         ...(agentArgs !== undefined ? { agentArgs } : {}),
         ...(cwd ? { cwd } : {}),
@@ -143,7 +143,8 @@ export function agentLaunchSurfaceFactory(
         // The runtime already minted this pane and baked it into the PTY's env and its own reveal;
         // dropping it here was what left a client with no way to name the tab it just asked for.
         ...(terminal.paneKey ? { paneKey: terminal.paneKey } : {}),
-        ...(terminal.warning ? { warning: terminal.warning } : {})
+        ...(terminal.warning ? { warning: terminal.warning } : {}),
+        ...(terminal.startupPromptDeferred ? { startupPromptDeferred: true } : {})
       }
     },
     deliverTerminalPrompt: async ({ handle, prompt }) =>

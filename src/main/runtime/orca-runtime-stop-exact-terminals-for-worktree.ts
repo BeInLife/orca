@@ -160,6 +160,21 @@ export class OrcaRuntimeWithStopExactTerminalsForWorktree extends OrcaRuntimeWit
     return [...handles].sort()
   }
 
+  /** A handle for a PTY's live surface, so a host write can target a pane the renderer spawned. */
+  resolveTerminalHandleForPty(ptyId: string): string | null {
+    // The handle exported into the PTY at spawn is the stable one; others are graph mirrors.
+    const known = this.handleByPtyId.get(ptyId) ?? this.getExistingTerminalHandlesForPtyId(ptyId)[0]
+    if (known) {
+      return known
+    }
+    const leaf = this.getLeavesForPty(ptyId).find((candidate) => candidate.connected)
+    if (leaf) {
+      return this.issueHandle(leaf)
+    }
+    const pty = this.getOrCreatePtyWorktreeRecord(ptyId)
+    return pty ? this.issuePtyHandle(pty) : null
+  }
+
   protected getRecordedTerminalSleepHandles(
     ptyIds: Iterable<string>,
     terminalHandlesByPtyId: Readonly<Record<string, readonly string[]>>

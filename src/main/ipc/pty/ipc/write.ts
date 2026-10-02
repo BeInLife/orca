@@ -2,6 +2,19 @@ import type { PtyRendererDelivery } from '../session'
 import { getPtyIpc } from '../../pty-host-bindings'
 import type { OrcaRuntimeService } from '../../../runtime/orca-runtime'
 import { createPtyWriteInput } from './write-input'
+import { deliverTerminalAgentLaunchPrompt } from '../../../runtime/rpc/methods/agent-launch-terminal-prompt'
+
+function isLaunchPromptPayload(args: unknown): args is { id: string; text: string } {
+  return (
+    typeof args === 'object' &&
+    args !== null &&
+    'id' in args &&
+    typeof args.id === 'string' &&
+    args.id.length > 0 &&
+    'text' in args &&
+    typeof args.text === 'string'
+  )
+}
 
 export function installPtyWriteIpcHandlers(deps: {
   mainWindow?: PtyRendererDelivery
@@ -38,6 +51,17 @@ export function installPtyWriteIpcHandlers(deps: {
     return claimTail
       ? claimTail.then((claimed) => (claimed ? writePtyInputAccepted(args) : false))
       : writePtyInputAccepted(args)
+  })
+
+  ipcMain.handle('pty:deliverAgentLaunchPrompt', async (event, args: unknown): Promise<boolean> => {
+    if (!isPtyWriteEventFromMainWindow(event) || !runtime || !isLaunchPromptPayload(args)) {
+      return false
+    }
+    const handle = runtime.resolveTerminalHandleForPty(args.id)
+    // Same writer agent.launch and paired hosts use, so a local launch gets no weaker paste.
+    return handle
+      ? await deliverTerminalAgentLaunchPrompt({ runtime, handle, text: args.text })
+      : false
   })
 
   ipcMain.removeAllListeners('pty:claimViewport')

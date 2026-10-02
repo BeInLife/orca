@@ -27,6 +27,8 @@ function harness(options: {
   structuredCreateError?: Error
   deliveredMessageId?: string | null
   terminalPromptDelivered?: boolean
+  /** The terminal create reports its command could not carry the prompt. */
+  createDefersPrompt?: boolean
 }) {
   const calls: string[] = []
   const createWorktree = vi.fn(
@@ -56,9 +58,12 @@ function harness(options: {
     }
     return { sessionId: 'sess-1', handle: 'handle_structured', fence: 4 }
   })
-  const createTerminalAgent = vi.fn(async (_args: { startupPrompt?: string }) => {
+  const createTerminalAgent = vi.fn(async (args: { agent: string; startupPrompt?: string }) => {
     calls.push('createTerminalAgent')
-    return { handle: 'term_1' }
+    // Mirrors the runtime: `aider` takes no prompt argument, so its plan always defers.
+    const deferred =
+      args.startupPrompt !== undefined && (options.createDefersPrompt || args.agent === 'aider')
+    return { handle: 'term_1', ...(deferred ? { startupPromptDeferred: true } : {}) }
   })
   const deliverStructuredPrompt = vi.fn(async () => {
     calls.push('deliverStructuredPrompt')
@@ -297,10 +302,10 @@ describe('the prompt receipt', () => {
 })
 
 /**
- * A terminal takes its prompt one of two ways, and which one is not a preference: an agent whose
- * CLI accepts a prompt argument must get it on argv, because that is the transport that survives
- * multi-line and special-character text. Only an agent with no such argument is written to as
- * keystrokes. `claude` is argv-mode, `aider` is `stdin-after-start` — the two halves of the table.
+ * A terminal takes its prompt one of two ways: on argv when the built launch command can carry it,
+ * because that transport survives multi-line and special-character text with no readiness race,
+ * and otherwise as a paste into the live PTY — an agent with no prompt argument (`aider`), or text
+ * too long for the host's command line.
  */
 describe('delivering a launch prompt to a terminal agent', () => {
   const SUBMIT = { text: 'do the thing', delivery: 'submit' } as const
@@ -331,8 +336,35 @@ describe('delivering a launch prompt to a terminal agent', () => {
       handle: 'term_1',
       prompt: SUBMIT
     })
-    // Folding it into argv would have appended it as an argument the CLI does not accept.
-    expect(h.createTerminalAgent.mock.calls[0]?.[0]).not.toHaveProperty('startupPrompt')
+    // The create is handed the text and reports it could not carry it.
+    expect(h.createTerminalAgent.mock.calls[0]?.[0]).toMatchObject({
+      startupPrompt: 'do the thing'
+    })
+  })
+
+  it('pastes an argv agent’s prompt the create could not fit on its command line', async () => {
+    const h = harness({ settings: null, createDefersPrompt: true })
+    const result = await h.run({
+      agent: 'claude',
+      target: { kind: 'existing', worktree: 'wt-7' },
+      prompt: SUBMIT
+    })
+
+    // Decided by the plan the create built, not by the agent: claude takes argv, but not this text.
+    expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
+    expect(h.deliverTerminalPrompt).toHaveBeenCalledWith({ handle: 'term_1', prompt: SUBMIT })
+  })
+
+  it('does not paste a prompt the existing-workspace create carried on its command line', async () => {
+    const h = harness({ settings: null })
+    const result = await h.run({
+      agent: 'claude',
+      target: { kind: 'existing', worktree: 'wt-7' },
+      prompt: SUBMIT
+    })
+
+    expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
+    expect(h.deliverTerminalPrompt).not.toHaveBeenCalled()
   })
 
   it('carries an argv prompt through an agent-first create, which builds the startup command', async () => {

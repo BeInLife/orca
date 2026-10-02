@@ -33,10 +33,10 @@ import type {
 } from '../../shared/agent-launch-intent'
 import { withoutReservedAgentCreateFields } from '../../shared/agent-launch-intent'
 import {
-  argvLaunchPrompt,
   deliverTerminalLaunchPrompt,
   HANDED_TO_TERMINAL,
   launchCommandPrompt,
+  launchSubmitText,
   promptReceipt,
   settleLaunchPromptDisposal
 } from './agent-launch-prompt-delivery'
@@ -302,14 +302,14 @@ function terminalLaunchInputs(intent: AgentLaunchIntent) {
 
 /**
  * The one place a terminal agent is created, so the structured-refusal downgrade builds the same
- * surface — carrying the same argv prompt — as a launch that chose a terminal outright.
+ * surface — carrying the same prompt — as a launch that chose a terminal outright.
  */
 async function createTerminalSurface(
   execution: AgentLaunchExecution,
   worktreeId: string
 ): Promise<CreatedSurface> {
   const { intent, surfaces } = execution
-  const startupPrompt = argvLaunchPrompt(intent)
+  const startupPrompt = launchSubmitText(intent)
   const terminal = await surfaces.createTerminalAgent({
     worktreeId,
     agent: intent.agent,
@@ -323,7 +323,8 @@ async function createTerminalSurface(
       ...(terminal.paneKey ? { paneKey: terminal.paneKey } : {})
     },
     ...(terminal.warning ? { warning: terminal.warning } : {}),
-    ...(startupPrompt ? { promptRodeLaunchCommand: true } : {})
+    // The create built the plan, so it alone knows whether the command carried the text.
+    ...(startupPrompt && !terminal.startupPromptDeferred ? { promptRodeLaunchCommand: true } : {})
   }
 }
 

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   pasteDraftWhenAgentReady: vi.fn(),
+  deliverLaunchPromptThroughHost: vi.fn(),
   seedNativeChatLaunchPrompt: vi.fn(),
   seedNativeChatLaunchDraft: vi.fn(),
   markNativeChatLaunchPromptFailed: vi.fn()
@@ -9,6 +10,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/agent-paste-draft', () => ({
   pasteDraftWhenAgentReady: mocks.pasteDraftWhenAgentReady
+}))
+
+vi.mock('@/lib/agent-launch-prompt-host-delivery', () => ({
+  deliverLaunchPromptThroughHost: mocks.deliverLaunchPromptThroughHost
 }))
 
 vi.mock('@/store', () => ({
@@ -250,5 +255,36 @@ describe('deliverLaunchPromptToAgentTab', () => {
     expect(mocks.pasteDraftWhenAgentReady).toHaveBeenCalledWith(
       expect.objectContaining({ timeoutMs: 123, onTimeout })
     )
+  })
+})
+
+describe('deliverLaunchPromptToAgentTab through the host writer', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.deliverLaunchPromptThroughHost.mockResolvedValue(false)
+  })
+
+  it('hands a deferred submitted prompt to the host, never the renderer paste', async () => {
+    const onTimeout = vi.fn()
+    await expect(
+      deliverLaunchPromptToAgentTab({
+        tabId: 'tab-1',
+        agent: 'claude',
+        content: 'long prompt',
+        submit: true,
+        forcePaste: true,
+        throughHostWriter: true,
+        onTimeout
+      })
+    ).resolves.toBe(false)
+
+    expect(mocks.deliverLaunchPromptThroughHost).toHaveBeenCalledWith({
+      tabId: 'tab-1',
+      content: 'long prompt',
+      onTimeout
+    })
+    expect(mocks.pasteDraftWhenAgentReady).not.toHaveBeenCalled()
+    // A prompt the host could not deliver is flagged in chat, as a failed paste is.
+    expect(mocks.markNativeChatLaunchPromptFailed).toHaveBeenCalledWith('tab-1')
   })
 })

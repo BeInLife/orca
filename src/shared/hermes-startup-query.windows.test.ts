@@ -3,7 +3,7 @@ import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from '
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { planHermesStartupQuery } from './hermes-startup-query'
+import { buildHermesStartupQuery } from './hermes-startup-query'
 
 const windowsIt = process.platform === 'win32' ? it : it.skip
 
@@ -25,7 +25,7 @@ windowsIt('preserves the startup query and spaced custom args in native Windows 
       join(tempDir, 'chat'),
       `require('node:fs').writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify(process.argv.slice(2)))`
     )
-    const plan = planHermesStartupQuery({
+    const plan = buildHermesStartupQuery({
       baseCommand: `"${hermesPath}"`,
       agentArgs: '--yolo --source "Orca automation validation"',
       prompt,

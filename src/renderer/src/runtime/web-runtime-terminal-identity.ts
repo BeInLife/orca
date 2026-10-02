@@ -25,5 +25,16 @@ export function readCreatedAgentTerminalIdentity(value: unknown): {
   ) {
     throw new Error('Host returned invalid agent terminal coordinates')
   }
-  return { terminal: { tabId, paneKey } }
+  const handle = 'handle' in terminal && typeof terminal.handle === 'string' ? terminal.handle : ''
+  // A deferral is actionable only with the terminal to deliver into.
+  const startupPromptDeferred =
+    'startupPromptDeferred' in terminal && terminal.startupPromptDeferred === true && handle !== ''
+  return {
+    terminal: {
+      tabId,
+      paneKey,
+      ...(handle ? { handle } : {}),
+      ...(startupPromptDeferred ? { startupPromptDeferred: true as const } : {})
+    }
+  }
 }

@@ -34,18 +34,23 @@ export function createPasteReadinessTimeoutNotice(args: {
         notified = true
         return
       }
-      toast.message(
-        translate(
-          'auto.lib.launch.agent.in.new.tab.a5a1f7033f',
-          "Your {{value0}} wasn't sent — paste it once the agent is ready.",
-          { value0: args.submitted ? 'prompt' : 'notes' }
-        )
-      )
+      showPromptNotSentNotice(args.agent, args.submitted)
       notified = true
-      track('agent_error', {
-        error_class: 'paste_readiness_timeout',
-        agent_kind: tuiAgentToAgentKind(args.agent)
-      })
     }
   }
+}
+
+/** The one "wasn't sent" notice, shared by local tabs and paired-host launches. */
+export function showPromptNotSentNotice(agent: TuiAgent, submitted: boolean): void {
+  toast.message(
+    translate(
+      'auto.lib.launch.agent.in.new.tab.a5a1f7033f',
+      "Your {{value0}} wasn't sent — paste it once the agent is ready.",
+      { value0: submitted ? 'prompt' : 'notes' }
+    )
+  )
+  track('agent_error', {
+    error_class: 'paste_readiness_timeout',
+    agent_kind: tuiAgentToAgentKind(agent)
+  })
 }
