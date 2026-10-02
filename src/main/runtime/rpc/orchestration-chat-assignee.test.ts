@@ -327,6 +327,38 @@ describe('dispatch --inject to a chat', () => {
     expect(turns).toEqual([])
   })
 
+  it('refuses a chat in its own words, never as a terminal or a pane', async () => {
+    await injectToChat()
+    const { taskId } = await coordinatorTask()
+    const busy = await call(SESSION_X, 'orchestration.dispatch', {
+      task: taskId,
+      to: ADDRESS_Z,
+      inject: true
+    })
+    const own = await call(SESSION_X, 'orchestration.dispatch', {
+      task: taskId,
+      to: ADDRESS_X,
+      inject: true
+    })
+
+    expect(busy).toMatchObject({
+      ok: false,
+      error: {
+        message: expect.stringMatching(/^orca_session_id:\S+ already has an active dispatch/)
+      }
+    })
+    expect(own).toMatchObject({
+      ok: false,
+      error: {
+        code: 'terminal_is_coordinator',
+        message: expect.stringContaining("is this coordinator's own Orca session ID")
+      }
+    })
+    for (const refusal of [busy, own]) {
+      expect(JSON.stringify(refusal)).not.toMatch(/Terminal|pane/)
+    }
+  })
+
   it('never delivers the preamble of a Dispatch stopped before the chat could take it', async () => {
     busy.add(SESSION_Z)
     const { dispatchId } = await injectToChat()

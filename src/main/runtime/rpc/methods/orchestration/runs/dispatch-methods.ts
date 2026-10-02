@@ -119,7 +119,9 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
         // nothing into the pane and stays legal for low-level topologies.
         throw new OrchestrationError(
           'terminal_is_coordinator',
-          `Terminal ${to} is this coordinator's own terminal. Dispatch to a different agent pane, or use worker-start to create one.`
+          chatAssignee
+            ? `${to} is this coordinator's own Orca session ID. Dispatch to a different agent, or use worker-start to create one.`
+            : `Terminal ${to} is this coordinator's own terminal. Dispatch to a different agent pane, or use worker-start to create one.`
         )
       }
 

@@ -10,6 +10,7 @@ import type { OrchestrationDb } from '../orchestration-db'
 import { transitionLifecycleWithDb } from '../lifecycle-transition'
 import { taskNotFoundError, taskNotStartableError } from '../../task-dispatch-refusal'
 import { dispatchAssigneeOrcaSessionId } from '../../dispatch-assignee-orca-session-id'
+import { assigneeActiveDispatchRefusal } from './assignee-active-dispatch-refusal'
 
 export function createDispatchContext(
   this: OrchestrationDb,
@@ -43,9 +44,7 @@ export function createDispatchContext(
   const existing = this.findActiveDispatchForAssignee(assigneeHandle, assigneePaneKey)
 
   if (existing) {
-    throw new Error(
-      `Terminal ${assigneeHandle} already has an active dispatch (${existing.id} for task ${existing.task_id})`
-    )
+    throw assigneeActiveDispatchRefusal(assigneeHandle, existing)
   }
 
   // Carry forward failure_count so the circuit breaker accumulates across retries for the same task.

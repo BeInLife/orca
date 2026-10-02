@@ -1,6 +1,7 @@
 import { OrchestrationError } from '../../orchestration-error'
 import type { OrchestrationDb } from '../orchestration-db'
 import { dispatchAssigneeOrcaSessionId } from '../../dispatch-assignee-orca-session-id'
+import { assigneeActiveDispatchRefusal } from '../dispatch-context/assignee-active-dispatch-refusal'
 
 export function prepareStartingWorkerAuthority(
   this: OrchestrationDb,
@@ -44,9 +45,7 @@ export function prepareStartingWorkerAuthority(
     }
     const existing = this.findActiveDispatchForAssignee(params.handle, params.paneKey ?? undefined)
     if (existing && existing.id !== params.dispatchId) {
-      throw new Error(
-        `Terminal ${params.handle} already has an active dispatch (${existing.id} for task ${existing.task_id})`
-      )
+      throw assigneeActiveDispatchRefusal(params.handle, existing)
     }
     const endpointId = this.getWorkerDispatch(params.dispatchId)?.runtime_epoch ?? null
     const contextUpdate = this.db
