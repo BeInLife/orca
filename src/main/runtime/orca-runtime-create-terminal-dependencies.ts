@@ -1,4 +1,5 @@
 export type { TerminalCreateOptions } from './runtime-terminal-contracts'
+export type { Worktree } from '../../shared/worktree/types'
 import type { RuntimeTerminalCreate as PublishedRuntimeTerminalCreate } from '../../shared/runtime-types'
 /** Host-internal: a published create never carries `startupPromptDeferred` (no RPC can pass a
  *  startup prompt), so it stays off the wire type. */
@@ -10,10 +11,12 @@ export {
   ownerSurfacing,
   resolveTerminalPresentation
 } from './orca-runtime-core'
-export { isValidHostTerminalTabId } from '../../shared/terminal-tab-id'
-export { isTerminalLeafId, makePaneKey } from '../../shared/stable-pane-id'
+export { makePaneKey } from '../../shared/stable-pane-id'
 export { randomUUID } from 'node:crypto'
-export { admitStablePaneAdoption } from './runtime-terminal-pane-identity'
+export {
+  admitStablePaneAdoption,
+  allocateTerminalPaneIdentity
+} from './runtime-terminal-pane-identity'
 export {
   copySleepingAgentLaunchConfig,
   inferCapturedClaudeAgentTeamsMode,
