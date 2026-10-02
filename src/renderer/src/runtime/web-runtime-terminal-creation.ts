@@ -117,9 +117,9 @@ export async function createWebRuntimeAgentSessionTerminal(
 }
 
 /**
- * Launch a web-host agent terminal with a draft. When the draft rode in on the launch command
- * (argv prefill) no paste runs, so seed the chat-composer copy once the host tab id is known;
- * when the host's command line could not carry it, paste it unsent once the agent is ready.
+ * Launch a web-host agent terminal whose draft already rode in on the launch
+ * command (argv prefill). No post-ready paste runs for that delivery, so seed
+ * the chat-composer copy here once the mirrored host tab id is known.
  */
 export async function createWebRuntimeAgentSessionTerminalWithLaunchDraft(
   args: CreateWebRuntimeSessionTerminalArgs & {
@@ -128,20 +128,12 @@ export async function createWebRuntimeAgentSessionTerminalWithLaunchDraft(
   }
 ): Promise<WebRuntimeTerminalCreateOutcome> {
   const created = await createWebRuntimeSessionTerminalResult(args)
-  if (created.outcome.status === 'failed' || !created.hostTabId) {
-    return created.outcome
-  }
-  const tabId = toWebTerminalSurfaceTabId(created.hostTabId)
-  if (created.launchPromptFollowUp?.kind === 'client-paste') {
-    void deliverLaunchPromptToAgentTab({
-      tabId,
-      content: args.launchDraft,
+  if (created.outcome.status !== 'failed' && created.hostTabId) {
+    seedNativeChatLaunchDraftForAgentTab({
+      tabId: toWebTerminalSurfaceTabId(created.hostTabId),
       agent: args.agent,
-      submit: false,
-      forcePaste: true
-    }).catch((error) => console.error('Draft delivery failed after launch', error))
-  } else {
-    seedNativeChatLaunchDraftForAgentTab({ tabId, agent: args.agent, text: args.launchDraft })
+      text: args.launchDraft
+    })
   }
   return created.outcome
 }

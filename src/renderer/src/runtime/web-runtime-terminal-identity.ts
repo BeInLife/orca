@@ -40,5 +40,5 @@ export function readCreatedAgentTerminalIdentity(value: unknown): {
 function readLaunchPromptReceipt(value: unknown): AgentSessionLaunchPromptReceipt | undefined {
   const outcome =
     typeof value === 'object' && value !== null && 'outcome' in value ? value.outcome : undefined
-  return outcome === 'pending' || outcome === 'not-delivered' ? { outcome } : undefined
+  return outcome === 'pending' ? { outcome } : undefined
 }

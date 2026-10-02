@@ -235,18 +235,23 @@ describe('a paired launch whose host delivers the prompt itself', () => {
     )
   })
 
-  it('pastes a draft the host could not carry, unsent, instead of seeding it as delivered', async () => {
-    stubHost({ launchPrompt: { outcome: 'not-delivered' } })
+  it('leaves a draft on a legacy create route exactly as before', async () => {
+    const runtimeCall = stubHost({ capabilities: [] })
+    const draft = 'x'.repeat(LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH + 1)
 
     await createWebRuntimeAgentSessionTerminalWithLaunchDraft({
       ...LAUNCH,
+      prompt: draft,
       promptDelivery: 'draft',
-      launchDraft: 'review'
+      command: `claude --prefill '${draft}'`,
+      legacyCleanLaunch: { command: 'claude' },
+      launchDraft: draft
     })
 
-    expect(mocks.deliverLaunchPromptToAgentTab).toHaveBeenCalledWith(
-      expect.objectContaining({ content: 'review', submit: false })
-    )
-    expect(mocks.seedNativeChatLaunchDraftForAgentTab).not.toHaveBeenCalled()
+    expect(calls(runtimeCall, 'session.tabs.createTerminal')[0]?.params).toMatchObject({
+      command: `claude --prefill '${draft}'`
+    })
+    expect(mocks.deliverLaunchPromptToAgentTab).not.toHaveBeenCalled()
+    expect(mocks.seedNativeChatLaunchDraftForAgentTab).toHaveBeenCalled()
   })
 })

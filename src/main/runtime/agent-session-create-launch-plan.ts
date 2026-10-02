@@ -23,36 +23,30 @@ export function planAgentSessionCreateLaunch(
 ): {
   startup: AgentStartupPlan | AgentDraftLaunchPlan | null
   owedLaunchPrompt: string | undefined
-  draftNotCarried: boolean
 } {
-  const isDraft = request.promptDelivery === 'draft'
-  const draft = isDraft
-    ? buildAgentDraftLaunchPlan({ ...startupArgs, draft: request.prompt ?? '' })
-    : null
-  if (draft) {
-    return { startup: draft, owedLaunchPrompt: undefined, draftNotCarried: false }
+  // Drafts keep their own rule and contract: a draft that does not fit is refused, as before.
+  if (request.promptDelivery === 'draft') {
+    return {
+      startup: buildAgentDraftLaunchPlan({ ...startupArgs, draft: request.prompt ?? '' }),
+      owedLaunchPrompt: undefined
+    }
   }
   const startup = buildAgentStartupPlan({
     ...startupArgs,
-    // A draft the command cannot carry starts clean; the caller pastes it, unsent.
-    prompt: isDraft ? '' : (request.prompt ?? ''),
+    prompt: request.prompt ?? '',
     allowEmptyPromptLaunch: true,
     deliverOversizedPromptAfterReady: true
   })
   // Only an argv agent's prompt is owed: callers paste a no-argument agent's prompt themselves.
   const owedLaunchPrompt =
-    !isDraft && startup?.followupPrompt && agentPromptRidesLaunchCommand(request.agent)
+    startup?.followupPrompt && agentPromptRidesLaunchCommand(request.agent)
       ? startup.followupPrompt
       : undefined
-  return { startup, owedLaunchPrompt, draftNotCarried: isDraft && startup !== null }
+  return { startup, owedLaunchPrompt }
 }
 
 export function launchPromptReceipt(
-  owedLaunchPrompt: string | undefined,
-  draftNotCarried: boolean | undefined
+  owedLaunchPrompt: string | undefined
 ): Pick<RuntimeCreateAgentSessionResult, 'launchPrompt'> {
-  if (owedLaunchPrompt) {
-    return { launchPrompt: { outcome: 'pending' } }
-  }
-  return draftNotCarried ? { launchPrompt: { outcome: 'not-delivered' } } : {}
+  return owedLaunchPrompt ? { launchPrompt: { outcome: 'pending' } } : {}
 }

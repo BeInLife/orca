@@ -5,6 +5,8 @@ import { lastVerifiedRuntimeStatus } from '../../../shared/runtime-host-status'
 import { LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH } from '../../../shared/terminal-quick-commands'
 import { TERMINAL_QUICK_COMMAND_LONG_PROMPTS_RUNTIME_CAPABILITY } from '../../../shared/terminal-quick-command-capabilities'
 
+type LaunchPromptDelivery = 'auto-submit' | 'draft' | 'submit-after-ready'
+
 /**
  * Whether a paired host may receive this prompt on its launch command. A host without long-prompt
  * support builds the command with no fit check, and its quick commands never exceeded the legacy
@@ -15,10 +17,16 @@ import { TERMINAL_QUICK_COMMAND_LONG_PROMPTS_RUNTIME_CAPABILITY } from '../../..
  */
 export function pairedHostMustPasteLongPrompt(
   state: Partial<Pick<AppState, 'runtimeStatusByEnvironmentId'>>,
-  environmentId: string,
-  prompt: string
+  environmentId: string | null,
+  prompt: string,
+  promptDelivery: LaunchPromptDelivery
 ): boolean {
-  if (prompt.length <= LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH) {
+  // Drafts keep their pre-existing route; only a submitted prompt is moved off the command line.
+  if (
+    environmentId === null ||
+    promptDelivery !== 'auto-submit' ||
+    prompt.length <= LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH
+  ) {
     return false
   }
   const capabilities = lastVerifiedRuntimeStatus(
@@ -34,9 +42,13 @@ export function pairedHostMustPasteLongPrompt(
  */
 export function pairedHostLegacyCleanLaunch(
   base: Omit<Parameters<typeof buildAgentStartupPlan>[0], 'prompt' | 'allowEmptyPromptLaunch'>,
-  prompt: string
+  prompt: string,
+  promptDelivery: LaunchPromptDelivery
 ): { legacyCleanLaunch?: CreateWebRuntimeSessionTerminalArgs['legacyCleanLaunch'] } {
-  if (prompt.length <= LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH) {
+  if (
+    promptDelivery !== 'auto-submit' ||
+    prompt.length <= LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH
+  ) {
     return {}
   }
   const clean = buildAgentStartupPlan({ ...base, prompt: '', allowEmptyPromptLaunch: true })

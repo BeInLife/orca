@@ -147,13 +147,9 @@ export type RuntimeCreateAgentSessionResult = {
   launchPrompt?: AgentSessionLaunchPromptReceipt
 }
 
-/** What became of a create's prompt that its launch command could not carry. */
-export type AgentSessionLaunchPromptReceipt =
-  /** The host writes it into the agent once its TUI is ready; `terminal.wait` with
-   *  `for: 'launch-prompt'` reports how that ended. */
-  | { outcome: 'pending' }
-  /** The host does not write it — a draft stays unsent text — so the caller pastes it. */
-  | { outcome: 'not-delivered' }
+/** A create's prompt its launch command could not carry: the host writes it into the agent once
+ *  its TUI is ready, and `terminal.wait` with `for: 'launch-prompt'` reports how that ended. */
+export type AgentSessionLaunchPromptReceipt = { outcome: 'pending' }
 
 /** How a host-owned launch prompt delivery ended, in `agent.launch`'s receipt vocabulary. */
 export type AgentSessionLaunchPromptDisposal = { outcome: 'handed-to-terminal' | 'not-delivered' }

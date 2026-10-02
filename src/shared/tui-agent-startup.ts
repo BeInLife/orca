@@ -13,7 +13,7 @@ import { TUI_AGENT_CONFIG } from './tui-agent-config'
 import type { StartupCommandDelivery } from './codex-startup-delivery'
 import { buildSleepingAgentLaunchConfig } from './sleeping-agent-launch-config'
 import { buildHermesStartupQuery, hermesStartupQueryFits } from './hermes-startup-query'
-import { launchCommandFits } from './agent-launch-command-line-budget'
+import { draftLaunchCommandFits, launchCommandFits } from './agent-launch-command-line-budget'
 import type { TuiAgent } from './tui-agent'
 import type { SessionOptionValue } from './native-chat-session-options'
 import { resolveAgentLaunchCommand } from './tui-agent-launch-command'
@@ -325,7 +325,7 @@ export function buildAgentDraftLaunchPlan(args: {
       env: { ...args.agentEnv, [config.draftPromptEnvVar]: trimmed }
     }
   }
-  if (!plan || !launchCommandFits({ command: plan.launchCommand, env: plan.env, platform })) {
+  if (!plan || !draftLaunchCommandFits({ command: plan.launchCommand, env: plan.env, platform })) {
     return null
   }
   return plan

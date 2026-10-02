@@ -31,7 +31,7 @@ export function planLaunchAgentStartupPrompt(args: {
   isFollowupPath: boolean
   /** Set when this host's writer delivers what the launch command cannot carry (local launches). */
   deliverOversizedPromptAfterReady: boolean
-  /** Set when the target cannot be trusted with this prompt on its command line at all. */
+  /** Set when the target cannot be trusted with this submitted prompt on its command line. */
   pastePromptAfterReady?: boolean
 }): LaunchAgentStartupPromptPlan {
   const { base, prompt, promptDelivery, isFollowupPath, deliverOversizedPromptAfterReady } = args
@@ -45,8 +45,8 @@ export function planLaunchAgentStartupPrompt(args: {
     deliverPastedPromptThroughHost: false
   })
 
-  if (hasPrompt && args.pastePromptAfterReady) {
-    return pasteAfterReady(promptDelivery !== 'draft')
+  if (hasPrompt && args.pastePromptAfterReady && promptDelivery === 'auto-submit') {
+    return pasteAfterReady(true)
   }
   if (hasPrompt && promptDelivery === 'submit-after-ready') {
     // Why: multi-line generated prompts are too large for a shell argv, so launch clean then paste+submit in the TUI.

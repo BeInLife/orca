@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   CMD_EXE_COMMAND_LINE_MAX_CHARS,
+  draftLaunchCommandFits,
   launchCommandFits,
   LAUNCH_ENV_MAX_CHARS,
   WINDOWS_LAUNCH_COMMAND_MAX_WEIGHTED_CHARS,
@@ -49,5 +50,16 @@ describe('launch command line budget', () => {
     expect(
       launchCommandFits({ command: 'agent', env: { K: 'v'.repeat(limit) }, platform: 'linux' })
     ).toBe(false)
+  })
+
+  it('keeps drafts on the pre-existing rule: Windows command and env to 24,000, POSIX unbounded', () => {
+    expect(draftLaunchCommandFits({ command: 'x'.repeat(24_000), platform: 'win32' })).toBe(true)
+    expect(
+      draftLaunchCommandFits({ command: 'x', env: { D: 'y'.repeat(23_998) }, platform: 'win32' })
+    ).toBe(true)
+    expect(draftLaunchCommandFits({ command: 'x'.repeat(24_001), platform: 'win32' })).toBe(false)
+    expect(draftLaunchCommandFits({ command: 'x'.repeat(1024 * 1024), platform: 'linux' })).toBe(
+      true
+    )
   })
 })

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeCreateAgentSessionRequest } from '../../shared/agent-session-host-authority'
 import { OrcaRuntimeService } from './orca-runtime'
+import { buildAgentDraftLaunchPlan } from '../../shared/tui-agent-startup'
+import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { RpcDispatcher } from './rpc/dispatcher'
 import { TERMINAL_METHODS } from './rpc/methods/terminal'
 
@@ -156,15 +158,29 @@ describe('a paired create handed a prompt its launch command cannot carry', () =
     })
   })
 
-  it('starts clean and hands back a draft the command cannot carry instead of failing', async () => {
+  it('builds a draft exactly as before, on the draft rule, with nothing owed', async () => {
     const runtime = createRuntime()
     const createTerminal = stubSpawn(runtime)
+    // A darwin client sends the draft; the host builds for its own Windows command line.
+    Object.assign(runtime, { getAgentLaunchPlatformForWorkspace: vi.fn(() => 'win32') })
+    const draft = 'd'.repeat(10_000)
 
-    const created = await runtime.createAgentSession(request({ promptDelivery: 'draft' }))
+    const created = await runtime.createAgentSession(
+      request({ prompt: draft, promptDelivery: 'draft' })
+    )
 
-    expect(created.launchPrompt).toEqual({ outcome: 'not-delivered' })
-    expect(createTerminal.mock.calls[0]?.[1]?.command).not.toContain('ppp')
-    // A draft is unsent text for the caller to paste; the host never submits it.
+    expect(created.launchPrompt).toBeUndefined()
+    const expected = buildAgentDraftLaunchPlan({
+      ...resolveAgentStartupPlanInputs({
+        agent: 'claude',
+        settings: { agentCmdOverrides: {}, agentDefaultArgs: {}, agentDefaultEnv: {} },
+        platform: 'win32',
+        isRemote: false
+      }),
+      draft
+    })
+    expect(createTerminal.mock.calls[0]?.[1]?.command).toBe(expected?.launchCommand)
+    expect(createTerminal.mock.calls[0]?.[1]?.command).toContain('--prefill')
     expect(mocks.deliverTerminalAgentLaunchPrompt).not.toHaveBeenCalled()
   })
 

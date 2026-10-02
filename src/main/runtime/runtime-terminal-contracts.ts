@@ -106,8 +106,6 @@ export type AgentSessionCreateOperation = {
     identity?: AgentSessionCreateReclaimIdentity
     /** The prompt the launch command could not carry, so a reclaimed PTY still gets it. */
     owedLaunchPrompt?: string
-    /** The draft the launch command could not carry, so a replay still tells the caller. */
-    draftNotCarried?: true
   }
 }
 

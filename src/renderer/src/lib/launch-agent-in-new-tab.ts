@@ -172,8 +172,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       deliverOversizedPromptAfterReady: runtimeEnvironmentId === null,
       pastePromptAfterReady:
         isWebHostLaunch &&
-        runtimeEnvironmentId !== null &&
-        pairedHostMustPasteLongPrompt(store, runtimeEnvironmentId, trimmedPrompt)
+        pairedHostMustPasteLongPrompt(store, runtimeEnvironmentId, trimmedPrompt, promptDelivery)
     })
   let promptDeliveryResult: Promise<{ delivered: boolean; failureNotified: boolean }> | undefined
 
@@ -200,7 +199,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       // Why: omission means terminal locally, but would let a paired host apply
       // its own default; send the client's resolved terminal choice explicitly.
       viewMode: initialViewModeProps.viewMode ?? 'terminal',
-      ...pairedHostLegacyCleanLaunch(startupPlanBase, trimmedPrompt),
+      ...pairedHostLegacyCleanLaunch(startupPlanBase, trimmedPrompt, promptDelivery),
       onPromptDelivered
     })
     return {

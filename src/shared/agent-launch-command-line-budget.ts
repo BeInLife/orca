@@ -55,3 +55,23 @@ export function launchCommandFits(args: {
     envChars <= LAUNCH_ENV_MAX_CHARS
   )
 }
+
+// Why: drafts keep the threshold they had before prompts got the cmd.exe rule; changing draft
+// launches is outside this rule's purpose.
+const WIN32_INLINE_DRAFT_LIMIT_CHARS = 24_000
+
+/** Whether a launch command carrying a draft (unsent composer text) fits, by the draft rule. */
+export function draftLaunchCommandFits(args: {
+  command: string
+  env?: Record<string, string>
+  platform: NodeJS.Platform
+}): boolean {
+  if (args.platform !== 'win32') {
+    return true
+  }
+  const envChars = Object.entries(args.env ?? {}).reduce(
+    (total, [key, value]) => total + key.length + value.length,
+    0
+  )
+  return args.command.length + envChars <= WIN32_INLINE_DRAFT_LIMIT_CHARS
+}

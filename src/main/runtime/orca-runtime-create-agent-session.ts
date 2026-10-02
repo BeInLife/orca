@@ -88,14 +88,14 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
         }
         // The lost spawn's prompt is still owed; one record per handle keeps a re-reclaim from
         // writing it twice.
-        const { owedLaunchPrompt, draftNotCarried } = existing.reclaim
+        const { owedLaunchPrompt } = existing.reclaim
         if (owedLaunchPrompt) {
           this.startHostLaunchPromptDelivery(reclaimed.handle, owedLaunchPrompt)
         }
         return {
           terminal: reclaimed,
           disposition: 'replayed',
-          ...launchPromptReceipt(owedLaunchPrompt, draftNotCarried)
+          ...launchPromptReceipt(owedLaunchPrompt)
         }
       }
       return { ...replayed, disposition: 'replayed' }
@@ -174,17 +174,11 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
         ...(request.agentArgs !== undefined ? { agentArgs: request.agentArgs } : {}),
         sessionOptions: this.toAgentSessionOptions(request.launchPreferences)
       })
-      const { startup, owedLaunchPrompt, draftNotCarried } = planAgentSessionCreateLaunch(
-        startupArgs,
-        request
-      )
+      const { startup, owedLaunchPrompt } = planAgentSessionCreateLaunch(startupArgs, request)
       if (!startup) {
         throw new Error('agent_session_identity_required')
       }
       reclaim.owedLaunchPrompt = owedLaunchPrompt
-      if (draftNotCarried) {
-        reclaim.draftNotCarried = true
-      }
       if (caller.signal?.aborted) {
         throw new Error('client_disconnected')
       }
@@ -244,7 +238,7 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
       return {
         terminal,
         disposition: 'created',
-        ...launchPromptReceipt(owedLaunchPrompt, draftNotCarried)
+        ...launchPromptReceipt(owedLaunchPrompt)
       }
     })()
     this.agentSessionCreateOperations.set(operationKey, {

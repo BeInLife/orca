@@ -143,13 +143,12 @@ export function launchAgentInWebHostTab(args: {
     })
   }
   if (hasPrompt && promptDelivery === 'draft') {
-    // Why: a draft the launch command carried gets no paste, so the create seeds the chat copy;
-    // one the host's command line could not carry is pasted unsent once the agent is ready.
+    // Why: the draft rode in on the launch command, so no paste runs and
+    // nothing else seeds the chat-composer copy for this host class.
     return createWebRuntimeAgentSessionTerminalWithLaunchDraft({
       ...launch,
       agent,
-      launchDraft: prompt,
-      ...(legacyCleanLaunch ? { legacyCleanLaunch } : {})
+      launchDraft: prompt
     }).then((outcome) => handleCreation({ outcome, promptDelivered: outcome.status === 'created' }))
   }
   if (hasPrompt) {

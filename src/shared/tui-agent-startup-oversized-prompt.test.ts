@@ -89,18 +89,20 @@ describe('a startup prompt the launch command cannot carry', () => {
     expect(Object.values(plan?.env ?? {}).join('')).not.toContain('qqq')
   })
 
-  it('pastes a Windows draft the cmd.exe budget cannot carry', () => {
-    const draft = 'd'.repeat(WINDOWS_LAUNCH_COMMAND_MAX_WEIGHTED_CHARS)
-    expect(
-      buildAgentDraftLaunchPlan({ agent: 'claude', draft, cmdOverrides: {}, platform: 'win32' })
-    ).toBeNull()
-    expect(
+  it('leaves drafts on their own pre-existing rule: Windows to 24,000, POSIX unbounded', () => {
+    const draftOf = (length: number, platform: NodeJS.Platform) =>
       buildAgentDraftLaunchPlan({
         agent: 'claude',
-        draft: 'short draft',
+        draft: 'd'.repeat(length),
         cmdOverrides: {},
-        platform: 'win32'
+        platform
       })
-    ).not.toBeNull()
+
+    // Over the prompt rule's cmd.exe budget, still carried on `--prefill` as before.
+    const windowsDraft = draftOf(10_000, 'win32')
+    expect(windowsDraft?.launchCommand).toContain('--prefill')
+    expect(windowsDraft?.launchCommand).toContain('d'.repeat(10_000))
+    expect(draftOf(24_000, 'win32')).toBeNull()
+    expect(draftOf(200 * 1024, 'darwin')?.launchCommand).toContain('--prefill')
   })
 })

@@ -44,7 +44,12 @@ export function legacyAgentLaunchFor(args: CreateWebRuntimeSessionTerminalArgs):
   clientOwesLaunchPrompt: boolean
 } {
   const clean = args.legacyCleanLaunch
-  if (clean && (args.prompt?.length ?? 0) > LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH) {
+  // Drafts keep main's contract on this route; only a submitted prompt is moved off the command.
+  if (
+    clean &&
+    args.promptDelivery !== 'draft' &&
+    (args.prompt?.length ?? 0) > LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH
+  ) {
     return {
       command: clean.command,
       env: clean.env,
@@ -68,9 +73,6 @@ export function launchPromptFollowUpOf(
   clientOwesLaunchPrompt: boolean
 ): CreatedWebRuntimeSessionTerminal['launchPromptFollowUp'] {
   if (clientOwesLaunchPrompt) {
-    return { kind: 'client-paste' }
-  }
-  if (launchPrompt?.outcome === 'not-delivered') {
     return { kind: 'client-paste' }
   }
   return launchPrompt?.outcome === 'pending' && terminal.handle
