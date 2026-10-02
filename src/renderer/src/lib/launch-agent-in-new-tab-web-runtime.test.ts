@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { toWebTerminalSurfaceTabId } from '../../../shared/terminal-surface-id'
 import { TERMINAL_QUICK_COMMAND_LONG_PROMPTS_RUNTIME_CAPABILITY as LONG_PROMPTS } from '../../../shared/terminal-quick-command-capabilities'
 
 const mocks = vi.hoisted(() => ({
@@ -171,8 +172,10 @@ describe('launchAgentInNewTab paired web runtime', () => {
   it('tells the user when the host could not deliver a deferred prompt', async () => {
     mocks.createWebRuntimeAgentSessionTerminalWithPrompt.mockResolvedValue({
       outcome: { status: 'created' },
-      promptDelivered: Promise.resolve(false)
+      promptDelivered: Promise.resolve(false),
+      hostTabId: 'host-tab-1'
     })
+    store.tabsByWorktree['wt-1'].push({ id: toWebTerminalSurfaceTabId('host-tab-1') })
     const { launchAgentInWebHostTab } = await import('./launch-agent-web-host-tab')
 
     const delivery = await launchAgentInWebHostTab({
@@ -261,6 +264,48 @@ describe('launchAgentInNewTab paired web runtime', () => {
           command: expect.not.stringContaining('xxx')
         })
       })
+    )
+  })
+
+  it('stays quiet about a prompt whose tab the user already closed, as a local tab does', async () => {
+    mocks.createWebRuntimeAgentSessionTerminalWithPrompt.mockResolvedValue({
+      outcome: { status: 'created' },
+      promptDelivered: Promise.resolve(false),
+      hostTabId: 'host-tab-closed'
+    })
+    const { launchAgentInWebHostTab } = await import('./launch-agent-web-host-tab')
+
+    const delivery = await launchAgentInWebHostTab({
+      agent: 'claude',
+      worktreeId: 'wt-1',
+      environmentId: 'web-runtime',
+      startupPlan: {
+        agent: 'claude',
+        launchCommand: 'claude',
+        expectedProcess: 'claude',
+        followupPrompt: null,
+        launchConfig: { agentCommand: 'claude', agentArgs: '', agentEnv: {} }
+      },
+      prompt: 'review the change',
+      promptDelivery: 'auto-submit',
+      pastePromptAfterReady: null,
+      submitPastedPrompt: false
+    })
+
+    expect(delivery).toEqual({ delivered: false, failureNotified: false })
+    expect(mocks.toastMessage).not.toHaveBeenCalled()
+  })
+
+  it('leaves an agent with no prompt argument to its unsubmitted paste on an older host', async () => {
+    store.runtimeStatusByEnvironmentId = new Map([
+      ['web-runtime', { status: { capabilities: ['terminal.quick-commands.v1'] } }]
+    ])
+    const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
+
+    launchAgentInNewTab({ agent: 'aider', worktreeId: 'wt-1', prompt: 'x'.repeat(7000) })
+
+    expect(mocks.createWebRuntimeAgentSessionTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({ submitPrompt: false })
     )
   })
 })

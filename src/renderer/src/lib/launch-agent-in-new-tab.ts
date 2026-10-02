@@ -14,8 +14,8 @@ import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner
 import { isWebRuntimeSessionActive } from '@/runtime/web-runtime-session'
 import { launchAgentInWebHostTab } from '@/lib/launch-agent-web-host-tab'
 import {
-  pairedHostLegacyCleanLaunch,
-  pairedHostMustPasteLongPrompt
+  launchPromptCarriers,
+  pairedHostLegacyCleanLaunch
 } from '@/lib/paired-host-long-prompt-compat'
 import {
   resolveTuiAgentLaunchArgs,
@@ -168,11 +168,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       prompt: trimmedPrompt,
       promptDelivery,
       isFollowupPath,
-      // Why: a paired host plans its own command line; this process owns only local launches.
-      deliverOversizedPromptAfterReady: runtimeEnvironmentId === null,
-      pastePromptAfterReady:
-        isWebHostLaunch &&
-        pairedHostMustPasteLongPrompt(store, runtimeEnvironmentId, trimmedPrompt, promptDelivery)
+      ...launchPromptCarriers(store, runtimeEnvironmentId, trimmedPrompt, promptDelivery, agent)
     })
   let promptDeliveryResult: Promise<{ delivered: boolean; failureNotified: boolean }> | undefined
 

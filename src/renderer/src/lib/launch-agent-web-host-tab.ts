@@ -7,6 +7,7 @@ import {
   createWebRuntimeSessionTerminal,
   isWebTerminalSurfaceTabId
 } from '@/runtime/web-runtime-session'
+import { toWebTerminalSurfaceTabId } from '@/runtime/web-terminal-surface-id'
 import type { AgentStartupPlan } from '@/lib/tui-agent-startup'
 import type { Tab } from '../../../shared/tab-types'
 import type { CreateWebRuntimeSessionTerminalArgs } from '@/runtime/web-runtime-session-types'
@@ -135,11 +136,11 @@ export function launchAgentInWebHostTab(args: {
       promptAfterReady: pastePromptAfterReady,
       submitPrompt: submitPastedPrompt,
       forcePromptPaste: true
-    }).then(({ outcome, promptDelivered }) => {
+    }).then(({ outcome, promptDelivered, hostTabId }) => {
       const result = handleCreation({ outcome, promptDelivered })
       return outcome.status === 'failed' || promptDelivered
         ? result
-        : notifyPromptNotSent(agent, submitPastedPrompt)
+        : notifyPromptNotSent(agent, submitPastedPrompt, worktreeId, hostTabId)
     })
   }
   if (hasPrompt && promptDelivery === 'draft') {
@@ -157,7 +158,7 @@ export function launchAgentInWebHostTab(args: {
       agent,
       prompt,
       ...(legacyCleanLaunch ? { legacyCleanLaunch } : {})
-    }).then(async ({ outcome, promptDelivered }) => {
+    }).then(async ({ outcome, promptDelivered, hostTabId }) => {
       // The tab shows now; how its prompt delivery ends is reported when it settles.
       const created = handleCreation({ outcome, promptDelivered: false })
       if (outcome.status === 'failed') {
@@ -170,7 +171,7 @@ export function launchAgentInWebHostTab(args: {
       }
       // Unknown (the outcome could not be read) is not reported as a failure it may not be.
       return delivered === false
-        ? notifyPromptNotSent(agent, true)
+        ? notifyPromptNotSent(agent, true, worktreeId, hostTabId)
         : { delivered: false, failureNotified: false }
     })
   }
@@ -181,8 +182,18 @@ export function launchAgentInWebHostTab(args: {
 
 function notifyPromptNotSent(
   agent: TuiAgent,
-  submitted: boolean
-): { delivered: false; failureNotified: true } {
+  submitted: boolean,
+  worktreeId: string,
+  hostTabId: string | undefined
+): { delivered: false; failureNotified: boolean } {
+  // Why: as for a local tab, a tab the user already closed needs no notice about its prompt.
+  const tabId = hostTabId ? toWebTerminalSurfaceTabId(hostTabId) : null
+  const tabClosed =
+    tabId !== null &&
+    !(useAppStore.getState().tabsByWorktree[worktreeId] ?? []).some((tab) => tab.id === tabId)
+  if (tabClosed) {
+    return { delivered: false, failureNotified: false }
+  }
   showPromptNotSentNotice(agent, submitted)
   return { delivered: false, failureNotified: true }
 }

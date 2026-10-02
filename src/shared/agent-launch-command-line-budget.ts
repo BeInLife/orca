@@ -56,8 +56,8 @@ export function launchCommandFits(args: {
   )
 }
 
-// Why: drafts keep the threshold they had before prompts got the cmd.exe rule; changing draft
-// launches is outside this rule's purpose.
+// Why: drafts keep the threshold they had before prompts got the cmd.exe rule. That threshold is
+// above cmd.exe's 8,191-character line, a pre-existing risk for long drafts left to a follow-up.
 const WIN32_INLINE_DRAFT_LIMIT_CHARS = 24_000
 
 /** Whether a launch command carrying a draft (unsent composer text) fits, by the draft rule. */
