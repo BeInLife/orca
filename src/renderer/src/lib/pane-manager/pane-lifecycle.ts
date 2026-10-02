@@ -15,6 +15,7 @@ import {
 } from './terminal-linkifier-hover-reset-on-mouseleave'
 import { installTerminalLinkifierHoverResetOnWrite } from './terminal-linkifier-hover-reset-on-write'
 import { attachDomRendererFocusClassSync } from './pane-dom-focus-class-sync'
+import { cancelPendingViewportPresent } from './pane-viewport-present'
 import { attachWebgl, cancelPendingWebglRefresh, disposeWebgl } from './pane-webgl-renderer'
 import { rebuildAttachedWebgl } from './pane-webgl-reattach'
 import { configureLazyArabicShapingJoiner } from './terminal-arabic-shaping-joiner'
@@ -188,6 +189,7 @@ export function disposePane(
     pane.pendingInitialFitRafId = null
   }
   cancelPendingWebglRefresh(pane)
+  cancelPendingViewportPresent(pane)
   detachPaneFitResizeObserver(pane)
   if (pane.panePointerDownHandler) {
     pane.container.removeEventListener('pointerdown', pane.panePointerDownHandler)
