@@ -8,8 +8,8 @@ const promptByPane = new Map<string, string>()
 
 /**
  * Keeps a launch file's prompt for the pane it launched: the agent's hook reports only the pointer
- * to the file, and Orca shows the prompt instead (`launchPromptShownForPane`). A sensitive file (a
- * worker brief with its capability) is never kept.
+ * to the file, and Orca shows the prompt instead (`launchPromptShownForPane`). A sensitive file (an
+ * orchestration worker's brief) is never kept.
  */
 export function rememberLaunchFilePrompt(
   paneKey: string,
