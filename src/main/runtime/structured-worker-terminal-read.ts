@@ -34,16 +34,11 @@ import type { RuntimeTerminalRead } from '../../shared/runtime-types'
 import { formatWorkerTranscriptMessage } from '../../shared/worker-transcript-text'
 import { AGENT_SESSION_NOT_ATTACHED } from '../native-chat/agent-session-wire/structured-agent-session-mutation-admission'
 import type { OrchestrationDb } from './orchestration/db'
-import { resolveOrchestrationParty } from './orchestration/orchestration-party'
-import {
-  otherHostSessionRefusal,
-  readAgentSessionRecordStore,
-  resolveExecutingSession
-} from './orchestration/structured-session-lineage'
 import { boundStructuredJournalTail } from './orchestration/structured-worker-journal-archive'
 import { readStructuredJournalPage } from './orchestration/structured-worker-journal-page'
 import {
   observeStructuredSession,
+  resolveStructuredAssignee,
   resolveStructuredWorkerAuthority,
   structuredWorkerSessionId,
   structuredWorkerTerminalState
@@ -121,17 +116,9 @@ export async function readStructuredWorkerTerminal(args: {
 
 /** The session a read names, as it runs now: a worker's successor, or a chat's live session. */
 function structuredSessionReadTarget(handle: string, db: OrchestrationDb | null): string | null {
-  const party = parseOrcaSessionAddress(handle) ? resolveOrchestrationParty(handle, db) : null
-  const workerHandle = party ? party.terminalHandle : handle
-  if (workerHandle !== null) {
-    const worker = resolveStructuredWorkerAuthority(workerHandle, db)?.identity
-    return worker ? structuredWorkerSessionId(worker) : null
+  if (parseOrcaSessionAddress(handle)) {
+    return resolveStructuredAssignee(handle, db)?.sessionId ?? null
   }
-  const store = readAgentSessionRecordStore()
-  const executing =
-    party?.orcaSessionId && store ? resolveExecutingSession(store, party.orcaSessionId) : null
-  if (executing?.kind === 'other-host') {
-    throw otherHostSessionRefusal(party?.orcaSessionId ?? handle)
-  }
-  return executing?.kind === 'here' ? executing.sessionId : null
+  const worker = resolveStructuredWorkerAuthority(handle, db)?.identity
+  return worker ? structuredWorkerSessionId(worker) : null
 }

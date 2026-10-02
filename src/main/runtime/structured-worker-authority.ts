@@ -14,7 +14,13 @@ import { parseOrcaSessionAddress, type OrcaSessionId } from '../../shared/orca-s
 import type { RuntimeTerminalState } from '../../shared/runtime-types'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { OrchestrationDb } from './orchestration/db'
-import { executingSessionId } from './orchestration/structured-session-lineage'
+import { canonicalOrcaSessionId } from './orchestration/canonical-orca-session-id'
+import {
+  executingSessionId,
+  otherHostSessionRefusal,
+  readAgentSessionRecordStore,
+  resolveExecutingSession
+} from './orchestration/structured-session-lineage'
 import { structuredWorkerAddressable, structuredWorkerOwned } from './structured-worker-custody'
 import {
   isStructuredWorkerHandle,
@@ -175,12 +181,51 @@ export function observeStructuredAssignee(
   address: string,
   db: OrchestrationDb | null | undefined
 ): StructuredWorkerObservation | null {
-  const chat = parseOrcaSessionAddress(address)
-  if (chat) {
-    return observeChatAssignee(executingSessionId(chat))
+  const assignee = resolveStructuredAssignee(address, db)
+  return assignee ? observeResolvedStructuredAssignee(assignee) : null
+}
+
+export function observeResolvedStructuredAssignee(
+  assignee: StructuredAssignee
+): StructuredWorkerObservation {
+  return assignee.kind === 'chat'
+    ? observeChatAssignee(assignee.sessionId)
+    : observeStructuredSession(assignee.sessionId)
+}
+
+/** A structured session a Dispatch is assigned to, by the session running it now. */
+export type StructuredAssignee = { kind: 'worker' | 'chat'; sessionId: string }
+
+/**
+ * The one resolver from an assignee address to the structured session running it now: a minted
+ * worker's handle, or a chat's `orca_session_id:<id>`; null when the address names neither. Both
+ * kinds walk the same lineage: another host is the typed host-boundary refusal, an id with no
+ * record names no session, and with no record store installed the id stands for itself (its
+ * readers report it unverifiable).
+ */
+export function resolveStructuredAssignee(
+  address: string,
+  db: OrchestrationDb | null | undefined
+): StructuredAssignee | null {
+  const named = parseOrcaSessionAddress(address)
+  const worker = named
+    ? resolveStructuredWorkerIdentityForSession(canonicalOrcaSessionId(named), db)
+    : resolveStructuredWorkerIdentity(address, db)
+  if (worker) {
+    return { kind: 'worker', sessionId: structuredWorkerSessionId(worker) }
   }
-  const worker = resolveStructuredWorkerIdentity(address, db)
-  return worker ? observeStructuredWorker(worker) : null
+  if (!named) {
+    return null
+  }
+  const store = readAgentSessionRecordStore()
+  if (!store) {
+    return { kind: 'chat', sessionId: named }
+  }
+  const executing = resolveExecutingSession(store, named)
+  if (executing.kind === 'other-host') {
+    throw otherHostSessionRefusal(named)
+  }
+  return executing.kind === 'here' ? { kind: 'chat', sessionId: executing.sessionId } : null
 }
 
 /**

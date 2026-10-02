@@ -33,11 +33,10 @@ import {
   projectStructuredItemToNativeChat,
   projectStructuredItemsToNativeChat
 } from '../../../../shared/structured-agent-session-projection'
-import { parseOrcaSessionAddress } from '../../../../shared/orca-session-address'
-import { executingSessionId } from '../../orchestration/structured-session-lineage'
 import {
   observeStructuredWorker,
   readStructuredAgentSessionRecord,
+  resolveStructuredAssignee,
   resolveStructuredWorkerIdentity,
   structuredWorkerAgent,
   structuredWorkerSessionId,
@@ -112,8 +111,8 @@ function chatJournalSource(
   const address =
     db.getWorkerDispatch(dispatchId)?.agent_terminal_handle ??
     db.getDispatchContextById(dispatchId)?.assignee_handle
-  const chat = parseOrcaSessionAddress(address)
-  return chat && address ? { sessionId: executingSessionId(chat), identityKey: [address] } : null
+  const chat = address ? resolveStructuredAssignee(address, db) : null
+  return chat?.kind === 'chat' && address ? { ...chat, identityKey: [address] } : null
 }
 
 /** The structured half of `worker-read`, or null when a PTY worker owns the dispatch. */

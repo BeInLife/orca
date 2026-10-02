@@ -9,6 +9,10 @@ import type { AgentJournalMessageItem } from '../../../shared/agent-session-jour
 import { formatOrcaSessionAddress } from '../../../shared/orca-session-address'
 import { testOrcaSessionId } from '../../../shared/orca-session-address-test-fixture'
 import {
+  structuredAgentSessionPaneKey,
+  structuredAgentSessionTabId
+} from '../../../shared/structured-agent-session-projection'
+import {
   createSessionCallerHarness,
   idOf,
   isRecord,
@@ -149,8 +153,24 @@ function installTerminal(): void {
     await readiness
     return { ...prompt, stages: ['turn_started'] }
   })
-  // The hook status row a running terminal agent publishes; a chat has no pane to bind one to.
+  // The agent-status store: the hook row a running terminal agent publishes, bound to its pane,
+  // and the row the session host publishes for the chat, keyed by its session.
   vi.spyOn(h.runtime, 'getOrchestrationFleetAgentStatusSnapshot').mockImplementation(() => [
+    {
+      binding: { kind: 'unresolved', reason: 'pane_not_bound' },
+      clock: { kind: 'observed', at: Date.now() },
+      deliveredAt: Date.now(),
+      activity: {
+        paneKey: structuredAgentSessionPaneKey(structuredAgentSessionTabId(SESSION_Z), SESSION_Z),
+        connectionId: null,
+        state: assigneeBusy ? 'working' : 'done',
+        agentType: 'claude',
+        model: null,
+        worktreeId: WORKSPACE_X,
+        restoredUnconfirmed: false,
+        providerSessionOnly: false
+      }
+    },
     {
       binding: {
         kind: 'pane',

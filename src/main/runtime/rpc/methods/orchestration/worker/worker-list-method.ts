@@ -199,9 +199,8 @@ async function projectWorkerListPageWithFilteredSnapshot(
   )
   const statuses = runtime.getOrchestrationFleetAgentStatusSnapshot()
   await ensureSessionHostForStructuredRows(runtime, pageRows)
-  const fleet = await projectWorkerFleet({
+  const fleet = projectWorkerFleet({
     db,
-    agentStatus: (handle) => runtime.getAgentStatusForHandle(handle),
     rows: pageRows,
     attentionFacts,
     statuses,

@@ -10,6 +10,11 @@ import { testOrcaSessionId } from '../../../shared/orca-session-address-test-fix
 import { OrcaRuntimeService } from '../orca-runtime'
 import { dispatchPreambleMessageId } from '../orchestration/dispatch-preamble-identity'
 import { localOrchestrationCliCommand } from '../orchestration/cli-command'
+import type { FleetAgentStatusEvidence } from '../../../shared/orchestration-fleet-agent-status-evidence'
+import {
+  structuredAgentSessionPaneKey,
+  structuredAgentSessionTabId
+} from '../../../shared/structured-agent-session-projection'
 import {
   ADDRESS_X,
   createSessionCallerHarness,
@@ -52,6 +57,8 @@ let submissions: Map<
 let closed: string[]
 /** Chat tabs the user has closed; every other session's tab is listed. */
 let closedTabs: Set<string>
+/** Every journal the host opened for a snapshot. */
+let journalReads: string[]
 
 function recordSubmission(sessionId: string, clientMessageId: string, dispatchState: string): void {
   const recorded = submissions.get(sessionId) ?? []
@@ -69,6 +76,7 @@ function installChatHost(): void {
   submissions = new Map()
   closed = []
   closedTabs = new Set()
+  journalReads = []
   hostRef.current = {
     deps: {
       store: {
@@ -84,24 +92,27 @@ function installChatHost(): void {
     close: async (id: string) => {
       closed.push(id)
     },
-    journalSnapshot: async (id: string) => ({
-      items: busy.has(id)
-        ? [
-            {
-              itemId: 'running',
-              revision: 1,
-              observedAt: 1,
-              sequence: 1,
-              body: {
-                kind: 'status',
-                text: 'working',
-                turnLifecycle: { turnId: 't', state: 'running' }
+    journalSnapshot: async (id: string) => {
+      journalReads.push(id)
+      return {
+        items: busy.has(id)
+          ? [
+              {
+                itemId: 'running',
+                revision: 1,
+                observedAt: 1,
+                sequence: 1,
+                body: {
+                  kind: 'status',
+                  text: 'working',
+                  turnLifecycle: { turnId: 't', state: 'running' }
+                }
               }
-            }
-          ]
-        : [],
-      submissions: submissions.get(id) ?? []
-    }),
+            ]
+          : [],
+        submissions: submissions.get(id) ?? []
+      }
+    },
     history: async ({ sessionId }: { sessionId: string }) => ({
       page: {
         items: [
@@ -186,6 +197,28 @@ async function injectToChat(to = ADDRESS_Z) {
   const dispatch = isRecord(result.dispatch) ? result.dispatch : {}
   const preamble = String(result.preamble)
   return { runId, taskId, dispatchId: String(dispatch.id), preamble, result }
+}
+
+/** The row the host publishes into the agent-status store for a structured session. */
+function structuredSessionStatusRow(
+  sessionId: string,
+  state: FleetAgentStatusEvidence['activity']['state']
+): FleetAgentStatusEvidence {
+  return {
+    binding: { kind: 'unresolved', reason: 'pane_not_bound' },
+    clock: { kind: 'observed', at: Date.now() },
+    deliveredAt: Date.now(),
+    activity: {
+      paneKey: structuredAgentSessionPaneKey(structuredAgentSessionTabId(sessionId), sessionId),
+      connectionId: null,
+      state,
+      agentType: 'claude',
+      model: null,
+      worktreeId: WORKSPACE_X,
+      restoredUnconfirmed: false,
+      providerSessionOnly: false
+    }
+  }
 }
 
 function workerDone(taskId: string, dispatchId: string): Row {
@@ -555,6 +588,24 @@ describe('worker-start --terminal orca_session_id:<chat>', () => {
       observation: { status: 'exited' },
       projection: { liveness: { verdict: 'exited', source: 'execution_host' } }
     })
+  })
+
+  it("reads its worker-list activity off the agent-status store's row, opening no journal", async () => {
+    const { response } = await startOnChat()
+    const dispatchId = String(resultOf(response).dispatchId)
+    vi.spyOn(h.runtime, 'getOrchestrationFleetAgentStatusSnapshot').mockReturnValue([
+      structuredSessionStatusRow(SESSION_Z, 'working')
+    ])
+    journalReads = []
+
+    const listed = await as(SESSION_X, 'orchestration.workerList', {})
+    const shown = await as(SESSION_X, 'orchestration.workerShow', { dispatch: dispatchId })
+
+    expect(listed).toMatchObject({
+      workers: [{ dispatchId, projection: { stage: { activity: 'working' } } }]
+    })
+    expect(shown).toMatchObject({ projection: { stage: { activity: 'working' } } })
+    expect(journalReads).toEqual([])
   })
 
   it('releases as retained, leaving the chat open', async () => {

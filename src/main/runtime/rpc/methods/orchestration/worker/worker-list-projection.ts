@@ -8,10 +8,19 @@ import type { WorkerTerminalListState } from '../../../../orchestration/worker-t
 import type { OrchestrationDb } from '../../../../orchestration/db'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import type { OrchestrationFleetWorker } from '../../../../../../shared/orchestration-fleet-projection'
-import { observeStructuredAssignee } from '../../../../structured-worker-authority'
-import { applyExecutionHostVerdict } from './fleet-execution-host-verdict'
-import { structuredAgentSessionLeadState } from '../../../../../../shared/structured-agent-session-agent-status'
-import type { StructuredAgentSessionProjectedStatus } from '../../../../../../shared/structured-agent-session-projection'
+import {
+  observeResolvedStructuredAssignee,
+  resolveStructuredAssignee,
+  type StructuredWorkerObservation
+} from '../../../../structured-worker-authority'
+import {
+  applyExecutionHostVerdict,
+  ensureSessionHostForStructuredRows
+} from './fleet-execution-host-verdict'
+import {
+  structuredAgentSessionPaneKey,
+  structuredAgentSessionTabId
+} from '../../../../../../shared/structured-agent-session-projection'
 
 export type WorkerListPageParams = {
   run?: string
@@ -20,11 +29,9 @@ export type WorkerListPageParams = {
   paginate?: boolean
 }
 
-export async function projectWorkerFleet(args: {
+export function projectWorkerFleet(args: {
   /** Reads a structured session's liveness off this runtime's own session host. */
   db: OrchestrationDb
-  /** A structured session's status, as `@idle` reads it (`getAgentStatusForHandle`). */
-  agentStatus: (handle: string) => Promise<string | null>
   rows: ReturnType<OrchestrationDb['listWorkerTerminalResources']>
   attentionFacts: ReturnType<OrchestrationDb['getWorkerAttentionFactsForDispatches']>
   statuses: Parameters<typeof projectOrchestrationFleet>[0]['statuses']
@@ -65,7 +72,7 @@ export async function projectWorkerFleet(args: {
       limit: args.limit,
       now: args.now
     })
-    await applyStructuredSessionVerdicts(page.workers, durable, args)
+    applyStructuredSessionVerdicts(page.workers, durable, args)
     return { ...page, durable }
   }
 
@@ -80,7 +87,7 @@ export async function projectWorkerFleet(args: {
       }).workers
     )
   }
-  await applyStructuredSessionVerdicts(projections, durable, args)
+  applyStructuredSessionVerdicts(projections, durable, args)
   return {
     workers: projections,
     page: { limit: workers.length, total: workers.length, hasMore: false, nextCursor: null },
@@ -90,42 +97,64 @@ export async function projectWorkerFleet(args: {
 
 /**
  * A worker that is a structured session — a minted worker or a chat — has no pane, so no
- * agent-status row can ever bind to it. Its liveness is the session host's own verdict, the same
- * observation worker-show reports.
+ * agent-status row binds to it as a terminal's does. Its liveness is the session host's own
+ * verdict, the same observation worker-show reports, and its activity is the agent-status store's
+ * row for the session running it now (child work folded in), the row the sidebar and `worktree ps`
+ * read. Nothing here opens a conversation.
  */
-async function applyStructuredSessionVerdicts(
+function applyStructuredSessionVerdicts(
   projected: ReturnType<typeof projectOrchestrationFleet>['workers'],
   durable: ReadonlyMap<string, FleetDurableWorker>,
   host: {
     db: OrchestrationDb
     now: number
-    agentStatus: (handle: string) => Promise<string | null>
+    statuses: Parameters<typeof projectOrchestrationFleet>[0]['statuses']
   }
-): Promise<void> {
+): void {
+  const activityByPane = new Map(
+    host.statuses.map((evidence) => [evidence.activity.paneKey, evidence.activity.state])
+  )
   for (const worker of projected) {
     const handle = durable.get(worker.dispatchId)?.agentTerminalHandle
-    const observation = handle ? observeStructuredAssignee(handle, host.db) : null
-    if (handle && observation) {
-      const reported = await host.agentStatus(handle)
-      const status = PROJECTED_STATUSES.find((known) => known === reported)
-      applyExecutionHostVerdict(
-        worker,
-        {
-          ...observation,
-          ...(status ? { activity: structuredAgentSessionLeadState(status) } : {})
-        },
-        host.now,
-        durable
-      )
+    const observed = handle ? observeStructuredAssigneeSession(handle, host.db) : null
+    if (!observed) {
+      continue
     }
+    const { sessionId, observation } = observed
+    const activity = sessionId
+      ? activityByPane.get(
+          structuredAgentSessionPaneKey(structuredAgentSessionTabId(sessionId), sessionId)
+        )
+      : undefined
+    applyExecutionHostVerdict(
+      worker,
+      { ...observation, ...(activity ? { activity } : {}) },
+      host.now,
+      durable
+    )
   }
 }
 
-const PROJECTED_STATUSES: readonly StructuredAgentSessionProjectedStatus[] = [
-  'working',
-  'attention',
-  'idle'
-]
+/** A row's structured session and its verdict; a refusal to resolve it is unverifiable, not fatal. */
+function observeStructuredAssigneeSession(
+  handle: string,
+  db: OrchestrationDb
+): { sessionId: string | null; observation: StructuredWorkerObservation } | null {
+  try {
+    const assignee = resolveStructuredAssignee(handle, db)
+    return assignee
+      ? { sessionId: assignee.sessionId, observation: observeResolvedStructuredAssignee(assignee) }
+      : null
+  } catch (error) {
+    return {
+      sessionId: null,
+      observation: {
+        status: 'unverifiable',
+        reason: error instanceof Error ? error.message : String(error)
+      }
+    }
+  }
+}
 
 /**
  * The same fleet verdict `worker-list` publishes, for one Dispatch.
@@ -144,9 +173,9 @@ export async function projectFleetWorkerPage(
     return null
   }
   const now = Date.now()
+  await ensureSessionHostForStructuredRows(runtime, rows)
   return projectWorkerFleet({
     db,
-    agentStatus: (handle) => runtime.getAgentStatusForHandle(handle),
     rows,
     attentionFacts: db.getWorkerAttentionFactsForDispatches([dispatchId], now),
     statuses: runtime.getOrchestrationFleetAgentStatusSnapshot(),

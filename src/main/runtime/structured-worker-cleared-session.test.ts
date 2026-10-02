@@ -6,6 +6,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
+import type { FleetAgentStatusEvidence } from '../../shared/orchestration-fleet-agent-status-evidence'
+import {
+  structuredAgentSessionPaneKey,
+  structuredAgentSessionTabId
+} from '../../shared/structured-agent-session-projection'
 import {
   agentSessionLeaseFixture,
   agentSessionRecordFixture
@@ -26,6 +31,8 @@ const { stopStructuredWorker, readStructuredWorkerJournal, captureStructuredWork
 const { OrcaRuntimeService } = await import('./orca-runtime')
 const { OrchestrationDb } = await import('./orchestration/db')
 const { structuredWorkerOwesWork } = await import('./structured-worker-custody')
+const { projectWorkerFleet } =
+  await import('./rpc/methods/orchestration/worker/worker-list-projection')
 const { AGENT_SESSION_NOT_ATTACHED } =
   await import('../native-chat/agent-session-wire/structured-agent-session-mutation-admission')
 const {
@@ -82,11 +89,13 @@ let storeFailure: Error | null = null
 let historyFailure: Error | null = null
 const closed: string[] = []
 const historyAsked: string[] = []
+const journalReads: string[] = []
 
 /** As the clear RPC leaves it: the minted session closed, the successor live and working. */
 function installClearedWorkerHost(): void {
   storeFailure = null
   historyFailure = null
+  journalReads.length = 0
   records.clear()
   records.set(MINTED, record(MINTED, true))
   records.set(SUCCESSOR, record(SUCCESSOR, false))
@@ -106,6 +115,7 @@ function installClearedWorkerHost(): void {
     // As the clear leaves the tab: it now shows the successor.
     getPersistedVisibleSessionTabIndex: () => ({ present: true, sessionIds: [SUCCESSOR] }),
     journalSnapshot: async (id: string) => {
+      journalReads.push(id)
       if (records.get(id)?.lease.claimStatus !== 'live') {
         throw new Error(AGENT_SESSION_NOT_ATTACHED.code)
       }
@@ -131,6 +141,52 @@ function installClearedWorkerHost(): void {
           hasOlder: false
         }
       }
+    }
+  }
+}
+
+/** A ready worker-start Dispatch whose worker is this structured worker; returns its id. */
+function startWorkerDispatch(db: InstanceType<typeof OrchestrationDb>, handle: string): string {
+  const task = db.createTask({ runId: 'run_legacy_local', spec: 'work' })
+  const { dispatch } = db.createStartingWorkerDispatch({
+    taskId: task.id,
+    startOptions: {},
+    creator: { kind: 'system' },
+    maxDepth: 9
+  })
+  db.prepareStartingWorkerAuthority({
+    dispatchId: dispatch.id,
+    handle,
+    paneKey: mintStructuredWorkerPaneKey(MINTED),
+    processIncarnation: structuredWorkerProcessIncarnation(MINTED),
+    worktreeId: 'wt_1',
+    effects: [],
+    setupState: 'not_configured',
+    hostScope: JSON.stringify({ kind: 'local', hostId: 'local' }),
+    terminalOwnership: 'created'
+  })
+  db.markWorkerDispatchReady(dispatch.id)
+  return dispatch.id
+}
+
+/** The row the session host publishes into the agent-status store for a session. */
+function structuredStatusRow(
+  sessionId: string,
+  state: 'working' | 'done'
+): FleetAgentStatusEvidence {
+  return {
+    binding: { kind: 'unresolved', reason: 'pane_not_bound' },
+    clock: { kind: 'observed', at: Date.now() },
+    deliveredAt: Date.now(),
+    activity: {
+      paneKey: structuredAgentSessionPaneKey(structuredAgentSessionTabId(sessionId), sessionId),
+      connectionId: null,
+      state,
+      agentType: 'claude',
+      model: null,
+      worktreeId: 'wt_1',
+      restoredUnconfirmed: false,
+      providerSessionOnly: false
     }
   }
 }
@@ -205,26 +261,31 @@ describe('a structured worker continued by /clear is served by its successor', (
   it("keeps the successor running for the worker's open Dispatch", () => {
     const db = new OrchestrationDb(':memory:')
     try {
-      const task = db.createTask({ runId: 'run_legacy_local', spec: 'work' })
-      const { dispatch } = db.createStartingWorkerDispatch({
-        taskId: task.id,
-        startOptions: {},
-        creator: { kind: 'system' },
-        maxDepth: 9
-      })
-      db.prepareStartingWorkerAuthority({
-        dispatchId: dispatch.id,
-        handle: mintStructuredWorkerHandle(),
-        paneKey: mintStructuredWorkerPaneKey(MINTED),
-        processIncarnation: structuredWorkerProcessIncarnation(MINTED),
-        worktreeId: 'wt_1',
-        effects: [],
-        setupState: 'not_configured',
-        hostScope: JSON.stringify({ kind: 'local', hostId: 'local' }),
-        terminalOwnership: 'created'
-      })
-      db.markWorkerDispatchReady(dispatch.id)
+      startWorkerDispatch(db, registerWorker().handle)
       expect(structuredWorkerOwesWork(db, records.get(SUCCESSOR)!)).toBe(true)
+    } finally {
+      db.close()
+    }
+  })
+
+  it("lists the worker with its successor's agent-status row, opening no journal", () => {
+    const db = new OrchestrationDb(':memory:')
+    try {
+      const dispatchId = startWorkerDispatch(db, registerWorker().handle)
+      const now = Date.now()
+      const fleet = projectWorkerFleet({
+        db,
+        rows: db.listWorkerTerminalResources({ dispatchIds: [dispatchId], limit: 1 }),
+        attentionFacts: db.getWorkerAttentionFactsForDispatches([dispatchId], now),
+        statuses: [structuredStatusRow(SUCCESSOR, 'working')],
+        limit: 1,
+        now
+      })
+      expect(fleet.workers[0]).toMatchObject({
+        liveness: { verdict: 'live', source: 'execution_host' },
+        stage: { activity: 'working' }
+      })
+      expect(journalReads).toEqual([])
     } finally {
       db.close()
     }
