@@ -25,7 +25,13 @@ export async function awaitChatTakesTurn(
   const dispose = host.subscribeStatus({
     id: `worker-start-readiness:${randomUUID()}`,
     emit: (event) => {
-      if (event.type !== 'status' || event.session.sessionId === sessionId) {
+      // As the mail lane's idle edge: a working or attention status cannot open the gate.
+      if (
+        event.type !== 'status' ||
+        (event.session.sessionId === sessionId &&
+          event.session.status !== 'working' &&
+          event.session.status !== 'attention')
+      ) {
         wake()
       }
     }

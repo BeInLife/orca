@@ -661,6 +661,24 @@ describe('worker-start --terminal orca_session_id:<chat>', () => {
     })
   })
 
+  it('re-reads the chat only on a status change that could let it take the turn', async () => {
+    busy.add(SESSION_Z)
+    const starting = startOnChat(ADDRESS_Z, 5_000)
+    await vi.waitFor(() => expect(journalReads).toContain(SESSION_Z))
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    const readsWhileBusy = journalReads.length
+    for (const status of ['working', 'attention', 'working']) {
+      for (const subscriber of statusSubscribers) {
+        subscriber.emit({ type: 'status', session: { sessionId: SESSION_Z, status } })
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(journalReads).toHaveLength(readsWhileBusy)
+
+    chatGoesIdle(SESSION_Z)
+    expect(resultOf((await starting).response)).toMatchObject({ state: 'ready' })
+  })
+
   it("names what held the chat when it cannot take the turn, as a terminal's wait status does", async () => {
     pendingPrompt.add(SESSION_Z)
     const receipt = resultOf((await startOnChat(ADDRESS_Z, 300)).response)
@@ -730,6 +748,11 @@ describe('worker-start --terminal orca_session_id:<chat>', () => {
       observation: { status: 'live' },
       projection: { liveness: { verdict: 'live' }, nextAction: { kind: 'none' } }
     })
+    // A stop never closes the user's chat, at rest or not: its worker terminal is external.
+    expect(await as(SESSION_X, 'orchestration.workerStop', { dispatch: dispatchId })).toMatchObject(
+      { processAction: 'none' }
+    )
+    expect(closed).toEqual([])
 
     // The user closes the chat: both surfaces now read the same exit.
     closedTabs.add(SESSION_Z)

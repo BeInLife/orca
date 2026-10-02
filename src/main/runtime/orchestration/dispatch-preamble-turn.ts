@@ -26,7 +26,10 @@ export function queueDispatchPreambleTurn(
   runtime.deliverPendingMessagesForHandle(`dispatch:${dispatchId}`)
 }
 
-/** Whether the chat's provider accepted the preamble as a turn within `timeoutMs`. */
+/**
+ * Whether the chat's provider accepted the preamble as a turn within `timeoutMs`. A row that is gone
+ * went with its Dispatch, which ended; nothing will deliver it, so the wait ends there.
+ */
 export async function awaitDispatchPreambleTurnDelivered(
   db: OrchestrationDb,
   dispatchId: string,
@@ -34,11 +37,12 @@ export async function awaitDispatchPreambleTurnDelivered(
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
   for (;;) {
-    if (db.getDispatchPreambleTurn(dispatchId)?.state === 'delivered') {
+    const state = db.getDispatchPreambleTurn(dispatchId)?.state
+    if (state === 'delivered') {
       return true
     }
     const remaining = deadline - Date.now()
-    if (remaining <= 0) {
+    if (state === undefined || remaining <= 0) {
       return false
     }
     await new Promise((resolve) => setTimeout(resolve, Math.min(PREAMBLE_TURN_POLL_MS, remaining)))
