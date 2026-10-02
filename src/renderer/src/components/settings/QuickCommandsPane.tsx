@@ -8,6 +8,7 @@ import {
 } from '@/components/terminal-quick-commands/TerminalQuickCommandDialog'
 import { searchTerminalQuickCommands } from '@/lib/terminal-quick-command-search'
 import { useAppStore } from '../../store'
+import { getTerminalQuickCommandHostPromptMaxLength } from '@/lib/terminal-quick-command-host-prompt-limit'
 import { Button } from '../ui/button'
 import { useConfirmationDialog } from '@/components/confirmation-dialog-context'
 import { getSettingOwnershipSummary } from './setting-ownership'
@@ -396,6 +397,10 @@ export function QuickCommandsPane({
           command={editor.command}
           repos={hostRepos}
           defaultAdvancedOpen
+          agentPromptMaxLength={getTerminalQuickCommandHostPromptMaxLength(
+            { runtimeTerminalQuickCommands: runtimeCommands },
+            editor.hostId
+          )}
           onOpenChange={(open) => !open && setEditor(null)}
           onSave={saveCommand}
         />

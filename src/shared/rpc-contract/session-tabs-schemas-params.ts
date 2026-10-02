@@ -5,7 +5,6 @@ import { OptionalBoolean } from './rpc-param-primitives'
 import { sleepingAgentLaunchConfigSchema } from '../workspace-session-sleeping-agents'
 import type { TuiAgent } from '../tui-agent'
 import { isTuiAgent } from '../tui-agent-config'
-import { MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH } from '../terminal-quick-commands'
 
 export const WorktreeTabSelector = z.object({
   worktree: z
@@ -152,7 +151,6 @@ export const CreateTerminalTab = WorktreeTabSelector.extend({
   // WSL, or SSH) instead of pasted from the mobile client before the TUI is ready.
   agentPrompt: z
     .string()
-    .max(MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH)
     .refine((value) => value.trim().length > 0, { message: 'Agent prompt cannot be empty' })
     .optional(),
   // Why: `agent` is the legacy preset field; `launchAgent` is the launch-plan

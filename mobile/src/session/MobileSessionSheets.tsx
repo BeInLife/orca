@@ -16,6 +16,7 @@ import {
   isTerminalPhoneDisplayMode
 } from './mobile-session-route-helpers'
 import type { MobileSessionController } from './use-mobile-session-controller'
+import { LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH } from '../terminal/quick-commands'
 
 export function MobileSessionSheets({ controller }: { controller: MobileSessionController }) {
   const {
@@ -61,6 +62,7 @@ export function MobileSessionSheets({ controller }: { controller: MobileSessionC
     setShowDictationSetup,
     browserScreencastSupported,
     quickCommandsSupported,
+    quickCommandsAcceptLongPrompts,
     showToast,
     nativeChatTranscriptIsLocalReadable,
     nativeChatController,
@@ -111,6 +113,9 @@ export function MobileSessionSheets({ controller }: { controller: MobileSessionC
             : getRepoIdFromMobileWorktreeId(worktreeId) || null
         }
         repoName={worktreeName || null}
+        agentPromptMaxLength={
+          quickCommandsAcceptLongPrompts ? null : LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH
+        }
         onLaunch={launchQuickCommand}
       />
       <ActionSheetModal

@@ -6,12 +6,11 @@ import { TEXT_INPUT_FONT_SIZE } from '../platform/text-input-font-size'
 import { MobileAgentIcon } from '../components/MobileAgentIcon'
 import {
   getQuickCommandAgentLabel,
-  MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
   MAX_QUICK_COMMAND_LABEL_LENGTH,
   MAX_QUICK_COMMAND_TERMINAL_TEXT_LENGTH
 } from '../terminal/quick-commands'
 import type { QuickCommandDraft } from './quick-command-draft'
-import { isQuickCommandDraftValid } from './quick-command-draft'
+import { isQuickCommandDraftPromptTooLong, isQuickCommandDraftValid } from './quick-command-draft'
 
 type Props = {
   draft: QuickCommandDraft
@@ -22,6 +21,8 @@ type Props = {
   // worktree's repo — no cross-repo picker like desktop.
   repoId: string | null
   repoName: string | null
+  /** The host's agent-prompt cap; `null` means none. */
+  agentPromptMaxLength: number | null
   onChange: (patch: Partial<QuickCommandDraft>) => void
   onOpenAgentPicker: () => void
   onCancel: () => void
@@ -68,6 +69,7 @@ export function QuickCommandEditorForm({
   error,
   repoId,
   repoName,
+  agentPromptMaxLength,
   onChange,
   onOpenAgentPicker,
   onCancel,
@@ -76,7 +78,8 @@ export function QuickCommandEditorForm({
   const hasRepoScope = repoId !== null
   const [advancedOpen, setAdvancedOpen] = useState(draft.scope.type === 'repo')
   const isAgent = draft.action === 'agent-prompt'
-  const canSave = isQuickCommandDraftValid(draft) && !saving
+  const canSave = isQuickCommandDraftValid(draft, agentPromptMaxLength) && !saving
+  const promptTooLong = isQuickCommandDraftPromptTooLong(draft, agentPromptMaxLength)
 
   return (
     <View style={styles.form}>
@@ -131,11 +134,14 @@ export function QuickCommandEditorForm({
           autoCapitalize="none"
           autoCorrect={false}
           multiline
-          maxLength={
-            isAgent ? MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH : MAX_QUICK_COMMAND_TERMINAL_TEXT_LENGTH
-          }
+          // Why: maxLength drops the tail of a paste silently, so prompts show a refusal instead.
+          maxLength={isAgent ? undefined : MAX_QUICK_COMMAND_TERMINAL_TEXT_LENGTH}
         />
-        {isAgent ? (
+        {promptTooLong && agentPromptMaxLength !== null ? (
+          <Text style={styles.error}>
+            {`${draft.prompt.trimEnd().length.toLocaleString()} / ${agentPromptMaxLength.toLocaleString()} characters — too long for this host. Update Orca on the host to save longer prompts.`}
+          </Text>
+        ) : isAgent ? (
           <Text style={styles.hint}>Supports skills, file paths, and built-in commands.</Text>
         ) : null}
       </View>

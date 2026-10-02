@@ -152,7 +152,8 @@ describe('useTerminalQuickCommandHosts', () => {
             error: null,
             loading: false,
             ready: true,
-            supported
+            supported,
+            acceptsLongPrompts: null
           }
         ]
       ])
@@ -182,7 +183,8 @@ describe('useTerminalQuickCommandHosts', () => {
           error: 'offline',
           loading: false,
           ready: false,
-          supported: null
+          supported: null,
+          acceptsLongPrompts: null
         }
       ]
     ])

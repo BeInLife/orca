@@ -656,4 +656,32 @@ describe('OrcaRuntimeService', () => {
       })
     )
   })
+
+  it('refuses a mobile quick-command prompt the host command line cannot carry', async () => {
+    const spawn = vi.fn().mockResolvedValue({ id: 'pty-agent-prompt' })
+    const runtime = new OrcaRuntimeService({
+      ...store,
+      getSettings: () => ({
+        ...store.getSettings(),
+        disabledTuiAgents: [],
+        agentCmdOverrides: { codex: 'codex' },
+        agentDefaultArgs: {}
+      })
+    } as never)
+    runtime.setPtyController({
+      spawn,
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null
+    })
+    runtime.syncWindowGraph(0, { tabs: [], leaves: [] })
+
+    await expect(
+      runtime.createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, {
+        agent: 'codex',
+        agentPrompt: 'x'.repeat(200 * 1024)
+      })
+    ).rejects.toThrow('too long to start from mobile')
+    expect(spawn).not.toHaveBeenCalled()
+  })
 })

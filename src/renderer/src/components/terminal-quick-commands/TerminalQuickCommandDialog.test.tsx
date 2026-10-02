@@ -4,13 +4,18 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TerminalQuickCommand } from '../../../../shared/terminal-quick-command-types'
+import { LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH } from '../../../../shared/terminal-quick-commands'
 import { TerminalQuickCommandDialog } from './TerminalQuickCommandDialog'
 
 const mountedRoots: Root[] = []
 
 async function renderDialog(
   command: TerminalQuickCommand,
-  props: { defaultAdvancedOpen?: boolean } = {}
+  props: {
+    defaultAdvancedOpen?: boolean
+    agentPromptMaxLength?: number | null
+    onSave?: (command: TerminalQuickCommand) => void
+  } = {}
 ): Promise<void> {
   const container = document.createElement('div')
   document.body.appendChild(container)
@@ -25,8 +30,9 @@ async function renderDialog(
         command={command}
         repos={[]}
         defaultAdvancedOpen={props.defaultAdvancedOpen}
+        agentPromptMaxLength={props.agentPromptMaxLength}
         onOpenChange={vi.fn()}
-        onSave={vi.fn()}
+        onSave={props.onSave ?? vi.fn()}
       />
     )
   })
@@ -168,5 +174,89 @@ describe('TerminalQuickCommandDialog animation structure', () => {
     const advancedToggle = document.body.querySelector('[aria-expanded="true"]')
     expect(advancedToggle?.textContent).toContain('Advanced')
     expect(document.body.textContent).not.toMatch(/Advanced\s*·\s*Global/)
+  })
+
+  it('refuses to save a prompt over an older host cap instead of truncating it', async () => {
+    const onSave = vi.fn()
+    await renderDialog(
+      {
+        id: 'qc-6',
+        label: 'Review',
+        action: 'agent-prompt',
+        agent: 'claude',
+        prompt: 'x'.repeat(LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH + 1),
+        scope: { type: 'global' }
+      },
+      { onSave, agentPromptMaxLength: LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH }
+    )
+
+    const save = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.startsWith('Save')
+    )
+    expect(save?.disabled).toBe(true)
+    expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
+      'too long for this host'
+    )
+    expect(document.body.querySelector('textarea')?.getAttribute('aria-invalid')).toBe('true')
+
+    const textarea = document.body.querySelector('textarea')!
+    await act(async () => {
+      textarea.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true })
+      )
+    })
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('saves a prompt at an older host cap in full', async () => {
+    const onSave = vi.fn()
+    const prompt = 'x'.repeat(LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH)
+    await renderDialog(
+      {
+        id: 'qc-7',
+        label: 'Review',
+        action: 'agent-prompt',
+        agent: 'claude',
+        prompt,
+        scope: { type: 'global' }
+      },
+      { onSave, agentPromptMaxLength: LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH }
+    )
+
+    expect(document.body.textContent).toContain('characters')
+    expect(document.body.querySelector('[role="alert"]')).toBeNull()
+    const textarea = document.body.querySelector('textarea')!
+    await act(async () => {
+      textarea.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true })
+      )
+    })
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ prompt }))
+  })
+
+  it('saves a long prompt with no limit or counter when the host has no cap', async () => {
+    const onSave = vi.fn()
+    const prompt = 'x'.repeat(LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH * 3)
+    await renderDialog(
+      {
+        id: 'qc-8',
+        label: 'Review',
+        action: 'agent-prompt',
+        agent: 'claude',
+        prompt,
+        scope: { type: 'global' }
+      },
+      { onSave }
+    )
+
+    expect(document.body.textContent).not.toContain('characters')
+    expect(document.body.textContent).toContain('Drag corner to resize')
+    const textarea = document.body.querySelector('textarea')!
+    await act(async () => {
+      textarea.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true })
+      )
+    })
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ prompt }))
   })
 })

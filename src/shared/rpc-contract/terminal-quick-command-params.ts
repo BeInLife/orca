@@ -1,6 +1,5 @@
 import { z } from 'zod'
 import {
-  MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH,
   MAX_QUICK_COMMAND_ID_LENGTH,
   MAX_QUICK_COMMAND_LABEL_LENGTH,
   MAX_QUICK_COMMAND_REPO_ID_LENGTH,
@@ -39,7 +38,7 @@ export const TerminalQuickCommandUpdateItem = z.union([
       agent: z.custom(supportsTerminalAgentQuickCommand, {
         message: 'Agent does not support prompt commands'
       }),
-      prompt: z.string().max(MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH),
+      prompt: z.string(),
       scope: TerminalQuickCommandScopeUpdate.optional()
     })
     .strict()

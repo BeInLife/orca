@@ -3,6 +3,7 @@ import {
   buildAgentStartupPlan,
   type AgentStartupPlan
 } from '@/lib/tui-agent-startup'
+import { agentLaunchCommandFitsPlatform } from '../../../shared/agent-launch-command-platform-limit'
 
 type StartupPlanBase = Omit<
   Parameters<typeof buildAgentStartupPlan>[0],
@@ -69,12 +70,25 @@ export function planLaunchAgentStartupPrompt(args: {
   if (hasPrompt && isFollowupPath) {
     return pasteAfterReady(false)
   }
+  const startupPlan = buildAgentStartupPlan({
+    ...base,
+    prompt: hasPrompt ? prompt : '',
+    allowEmptyPromptLaunch: !hasPrompt
+  })
+  if (
+    hasPrompt &&
+    startupPlan &&
+    !agentLaunchCommandFitsPlatform({
+      command: startupPlan.launchCommand,
+      env: startupPlan.env,
+      platform: base.platform
+    })
+  ) {
+    // Why: a prompt too long for the host's command line still reaches the TUI as a paste.
+    return pasteAfterReady(true)
+  }
   return {
-    startupPlan: buildAgentStartupPlan({
-      ...base,
-      prompt: hasPrompt ? prompt : '',
-      allowEmptyPromptLaunch: !hasPrompt
-    }),
+    startupPlan,
     pasteDraftAfterLaunch: null,
     submitPastedPrompt: false
   }

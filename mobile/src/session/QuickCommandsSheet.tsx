@@ -26,6 +26,8 @@ type Props = {
   client: RpcClient | null
   repoId: string | null
   repoName: string | null
+  /** The host's agent-prompt cap; `null` means none. */
+  agentPromptMaxLength: number | null
   onLaunch: (command: TerminalQuickCommand) => boolean
 }
 
@@ -37,6 +39,7 @@ export function QuickCommandsSheet({
   client,
   repoId,
   repoName,
+  agentPromptMaxLength,
   onLaunch
 }: Props) {
   const { commands, loading, ready, error, persist } = useQuickCommands({
@@ -123,7 +126,7 @@ export function QuickCommandsSheet({
     if (!draft || savingRef.current) {
       return
     }
-    const built = draftToQuickCommand(draft)
+    const built = draftToQuickCommand(draft, agentPromptMaxLength)
     if (!built) {
       return
     }
@@ -204,6 +207,7 @@ export function QuickCommandsSheet({
           error={error}
           repoId={repoId}
           repoName={repoName}
+          agentPromptMaxLength={agentPromptMaxLength}
           onChange={(patch) =>
             setDraft((current) => (current ? { ...current, ...patch } : current))
           }

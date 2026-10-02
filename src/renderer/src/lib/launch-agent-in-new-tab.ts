@@ -266,7 +266,10 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     ...(startupPlan.startupCommandDelivery
       ? { startupCommandDelivery: startupPlan.startupCommandDelivery }
       : {}),
-    ...(agent === 'command-code' && hasPrompt && promptDelivery === 'auto-submit'
+    ...(agent === 'command-code' &&
+    hasPrompt &&
+    promptDelivery === 'auto-submit' &&
+    pasteDraftAfterLaunch === null
       ? { initialAgentStatus: { agent, prompt: trimmedPrompt } }
       : {}),
     telemetry: {

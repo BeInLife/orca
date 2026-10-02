@@ -21,24 +21,61 @@ import type { TerminalQuickCommandDialogDraftMemory } from './terminal-quick-com
 import { TerminalQuickCommandAppendEnterSwitch } from './TerminalQuickCommandAppendEnterSwitch'
 
 const QUICK_COMMAND_AGENT_OPTIONS = getTerminalQuickCommandAgentOptions()
+// Why: long pastes are the common way to hit the cap, so the count appears before Save disables.
+const BODY_LENGTH_COUNTER_THRESHOLD = 0.8
 
 type TerminalQuickCommandContentSectionProps = {
   draft: TerminalQuickCommand
   isAgentAction: boolean
   selectedAgent: TuiAgent
+  bodyLength: number
+  bodyMaxLength: number | null
   draftMemoryRef: MutableRefObject<TerminalQuickCommandDialogDraftMemory>
   setDraft: Dispatch<SetStateAction<TerminalQuickCommand>>
   toggleAppendEnter: () => void
+}
+
+function getBodyLengthLabel(
+  bodyLength: number,
+  bodyMaxLength: number,
+  bodyTooLong: boolean,
+  isAgentAction: boolean
+): string {
+  const values = { value0: bodyLength.toLocaleString(), value1: bodyMaxLength.toLocaleString() }
+  if (bodyTooLong && isAgentAction) {
+    return translate(
+      'auto.components.terminal.quick.commands.TerminalQuickCommandDialog.prompt_over_host_limit',
+      '{{value0}} / {{value1}} characters — too long for this host. Update Orca on the host to save longer prompts.',
+      values
+    )
+  }
+  if (bodyTooLong) {
+    return translate(
+      'auto.components.terminal.quick.commands.TerminalQuickCommandDialog.length_over_limit',
+      '{{value0}} / {{value1}} characters — too long to save',
+      values
+    )
+  }
+  return translate(
+    'auto.components.terminal.quick.commands.TerminalQuickCommandDialog.length_count',
+    '{{value0}} / {{value1}} characters',
+    values
+  )
 }
 
 export function TerminalQuickCommandContentSection({
   draft,
   isAgentAction,
   selectedAgent,
+  bodyLength,
+  bodyMaxLength,
   draftMemoryRef,
   setDraft,
   toggleAppendEnter
 }: TerminalQuickCommandContentSectionProps): React.JSX.Element {
+  const bodyTooLong = bodyMaxLength !== null && bodyLength > bodyMaxLength
+  const showBodyLength =
+    bodyMaxLength !== null && bodyLength >= bodyMaxLength * BODY_LENGTH_COUNTER_THRESHOLD
   const commandText = isTerminalAgentQuickCommand(draft) ? draft.prompt : draft.command
   // Why: the frame header is a plain span, so the textarea carries the accessible name itself.
   const commandFieldLabel = isAgentAction
@@ -152,6 +189,7 @@ export function TerminalQuickCommandContentSection({
         <textarea
           value={commandText}
           aria-label={commandFieldLabel}
+          aria-invalid={bodyTooLong || undefined}
           onChange={(event) => {
             const text = event.target.value
             draftMemoryRef.current = isAgentAction
@@ -203,12 +241,24 @@ export function TerminalQuickCommandContentSection({
               )}
             </span>
           )}
-          <span className="shrink-0 text-[11px] text-muted-foreground">
-            {translate(
-              'auto.components.terminal.quick.commands.TerminalQuickCommandDialog.resize_hint',
-              'Drag corner to resize'
-            )}
-          </span>
+          {showBodyLength ? (
+            <span
+              className={cn(
+                'shrink-0 text-[11px] tabular-nums',
+                bodyTooLong ? 'text-destructive' : 'text-muted-foreground'
+              )}
+              role={bodyTooLong ? 'alert' : undefined}
+            >
+              {getBodyLengthLabel(bodyLength, bodyMaxLength, bodyTooLong, isAgentAction)}
+            </span>
+          ) : (
+            <span className="shrink-0 text-[11px] text-muted-foreground">
+              {translate(
+                'auto.components.terminal.quick.commands.TerminalQuickCommandDialog.resize_hint',
+                'Drag corner to resize'
+              )}
+            </span>
+          )}
         </div>
       </div>
     </div>

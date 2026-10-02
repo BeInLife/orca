@@ -33,6 +33,8 @@ export function useMobileSessionFeedbackCapabilities(scope: MobileSessionTermina
     null
   )
   const [quickCommandsSupported, setQuickCommandsSupported] = useState<boolean | null>(null)
+  // Why: until a host says it stores long prompts, edits keep to the cap older hosts enforce.
+  const [quickCommandsAcceptLongPrompts, setQuickCommandsAcceptLongPrompts] = useState(false)
   // Structured-session features are negotiated with the same host capability probe as
   // the other session surfaces; consumers never maintain a second status cache.
   const [agentSessionHostSupport, setAgentSessionHostSupport] =
@@ -120,6 +122,8 @@ export function useMobileSessionFeedbackCapabilities(scope: MobileSessionTermina
     setAgentSessionHistorySupported,
     quickCommandsSupported,
     setQuickCommandsSupported,
+    quickCommandsAcceptLongPrompts,
+    setQuickCommandsAcceptLongPrompts,
     agentSessionHostSupport,
     setAgentSessionHostSupport,
     browserScreencastSupportedRef,

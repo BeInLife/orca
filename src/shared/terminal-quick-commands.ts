@@ -12,9 +12,9 @@ export const MAX_QUICK_COMMAND_ID_LENGTH = 80
 export const MAX_QUICK_COMMAND_LABEL_LENGTH = 80
 export const MAX_QUICK_COMMAND_REPO_ID_LENGTH = 200
 export const MAX_QUICK_COMMAND_TERMINAL_TEXT_LENGTH = 4000
-// Why: agent prompt quick commands still launch through startup commands for
-// argv/flag agents, so this must stay within Orca's Windows shell safety cap.
-export const MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH = 6000
+// Why: builds before long-prompt support refuse longer prompts on save and reject a whole list
+// holding one. Agent prompts themselves are unbounded; this is only for talking to those builds.
+export const LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH = 6000
 const REMOVED_PRESET_IDS = new Set(['default-pwd', 'default-git-status'])
 
 const DEFAULT_TERMINAL_QUICK_COMMANDS: TerminalQuickCommand[] = []
@@ -78,6 +78,21 @@ export function getTerminalQuickCommandBody(command: TerminalQuickCommand): stri
   return isTerminalAgentQuickCommand(command) ? command.prompt : command.command
 }
 
+/** `null` means no limit. `agentPromptMaxLength` is the target host's prompt cap, if it has one. */
+export function getTerminalQuickCommandBodyMaxLength(
+  action: TerminalQuickCommandAction,
+  agentPromptMaxLength: number | null
+): number | null {
+  return action === 'agent-prompt' ? agentPromptMaxLength : MAX_QUICK_COMMAND_TERMINAL_TEXT_LENGTH
+}
+
+export function isLegacyReadableTerminalQuickCommand(command: TerminalQuickCommand): boolean {
+  return (
+    !isTerminalAgentQuickCommand(command) ||
+    command.prompt.length <= LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH
+  )
+}
+
 export function isTerminalQuickCommandComplete(command: TerminalQuickCommand): boolean {
   return command.label.trim().length > 0 && getTerminalQuickCommandBody(command).trim().length > 0
 }
@@ -139,10 +154,7 @@ export function normalizeTerminalQuickCommands(input: unknown): TerminalQuickCom
         ...base,
         action: 'agent-prompt',
         agent: agentId,
-        prompt: (hasPrompt ? String(record.prompt).trimEnd() : '').slice(
-          0,
-          MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH
-        )
+        prompt: hasPrompt ? String(record.prompt).trimEnd() : ''
       })
     } else {
       const command = hasCommand ? String(record.command).trimEnd() : ''

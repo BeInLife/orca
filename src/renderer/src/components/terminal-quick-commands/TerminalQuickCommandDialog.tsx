@@ -7,6 +7,7 @@ import type { Repo } from '../../../../shared/repo-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import {
   getTerminalQuickCommandAction,
+  getTerminalQuickCommandBodyMaxLength,
   getTerminalQuickCommandScope,
   isTerminalAgentQuickCommand,
   supportsTerminalAgentQuickCommand
@@ -44,6 +45,8 @@ type TerminalQuickCommandDialogProps = {
   /** Settings has no ambient workspace to imply scope from, so it opens the
    *  Advanced section up front. In-workspace entry points leave it collapsed. */
   defaultAdvancedOpen?: boolean
+  /** The target host's agent-prompt cap; `null` (the default) means none. */
+  agentPromptMaxLength?: number | null
   onOpenChange: (open: boolean) => void
   onSave: (command: TerminalQuickCommand) => void
 }
@@ -68,6 +71,7 @@ export function TerminalQuickCommandDialog({
   command,
   repos = EMPTY_REPOS,
   defaultAdvancedOpen = false,
+  agentPromptMaxLength = null,
   onOpenChange,
   onSave
 }: TerminalQuickCommandDialogProps): React.JSX.Element {
@@ -109,6 +113,10 @@ export function TerminalQuickCommandDialog({
 
   const selectedAgent =
     isAgentAction && supportsTerminalAgentQuickCommand(draft.agent) ? draft.agent : fallbackAgent
+  const bodyLength = (isAgentAction ? draft.prompt : draft.command).trimEnd().length
+  const bodyMaxLength = getTerminalQuickCommandBodyMaxLength(selectedAction, agentPromptMaxLength)
+  // Why: past the cap the host refuses or trims the save, so block it instead of losing the tail.
+  const bodyTooLong = bodyMaxLength !== null && bodyLength > bodyMaxLength
 
   const setAction = (action: 'terminal-command' | 'agent-prompt'): void => {
     setDraft((current) => {
@@ -153,6 +161,7 @@ export function TerminalQuickCommandDialog({
         }
     if (
       !next.label ||
+      bodyTooLong ||
       (isTerminalAgentQuickCommand(next)
         ? !next.prompt.trim() || !supportsTerminalAgentQuickCommand(next.agent)
         : !next.command.trim())
@@ -165,6 +174,7 @@ export function TerminalQuickCommandDialog({
 
   const canSave =
     draft.label.trim().length > 0 &&
+    !bodyTooLong &&
     (isAgentAction
       ? draft.prompt.trimEnd().length > 0 && supportsTerminalAgentQuickCommand(draft.agent)
       : draft.command.trimEnd().length > 0)
@@ -236,6 +246,8 @@ export function TerminalQuickCommandDialog({
             draft={draft}
             isAgentAction={isAgentAction}
             selectedAgent={selectedAgent}
+            bodyLength={bodyLength}
+            bodyMaxLength={bodyMaxLength}
             draftMemoryRef={draftMemoryRef}
             setDraft={setDraft}
             toggleAppendEnter={toggleAppendEnter}
