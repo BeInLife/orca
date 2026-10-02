@@ -15,7 +15,7 @@ import type { RuntimeTerminalState } from '../../shared/runtime-types'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { OrchestrationDb } from './orchestration/db'
 import { executingSessionId } from './orchestration/structured-session-lineage'
-import { structuredWorkerAddressable } from './structured-worker-custody'
+import { structuredWorkerAddressable, structuredWorkerOwned } from './structured-worker-custody'
 import {
   isStructuredWorkerHandle,
   structuredWorkerIdentities,
@@ -168,8 +168,8 @@ export function structuredWorkerTerminalState(
 
 /**
  * The liveness of whatever structured session an assignee address names — a minted worker's handle
- * or a chat's `orca_session_id:<id>` — observed on the session running it now; null when the address names
- * neither. worker-show and the fleet projection both read it, so they cannot disagree.
+ * or a chat's `orca_session_id:<id>` — observed on the session running it now; null when the
+ * address names neither. worker-show and the fleet projection both read it, so they cannot disagree.
  */
 export function observeStructuredAssignee(
   address: string,
@@ -177,10 +177,23 @@ export function observeStructuredAssignee(
 ): StructuredWorkerObservation | null {
   const chat = parseOrcaSessionAddress(address)
   if (chat) {
-    return observeStructuredSession(executingSessionId(chat))
+    return observeChatAssignee(executingSessionId(chat))
   }
   const worker = resolveStructuredWorkerIdentity(address, db)
   return worker ? observeStructuredWorker(worker) : null
+}
+
+/**
+ * A chat's agent rests (the idle sweep, or the user's Stop) with its lease released and death
+ * evidence written, yet the chat is open and its next turn starts the agent again, as an idle
+ * terminal agent waits at its prompt: live. Only a chat gone from this host (tab closed, record not
+ * current) has exited.
+ */
+function observeChatAssignee(sessionId: string): StructuredWorkerObservation {
+  const observation = observeStructuredSession(sessionId)
+  return observation.status === 'exited' && structuredWorkerOwned(sessionId) === true
+    ? { status: 'live' }
+    : observation
 }
 
 /** A worker's liveness, observed on the session running it now (see `structuredWorkerSessionId`). */

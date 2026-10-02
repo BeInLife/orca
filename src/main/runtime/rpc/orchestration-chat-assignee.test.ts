@@ -49,6 +49,8 @@ let submissions: Map<
   { clientMessageId: string; dispatchState: string; submittedAt: number }[]
 >
 let closed: string[]
+/** Chat tabs the user has closed; every other session's tab is listed. */
+let closedTabs: Set<string>
 
 function recordSubmission(sessionId: string, clientMessageId: string, dispatchState: string): void {
   const recorded = submissions.get(sessionId) ?? []
@@ -65,6 +67,7 @@ function installChatHost(): void {
   ledger = new Map()
   submissions = new Map()
   closed = []
+  closedTabs = new Set()
   hostRef.current = {
     deps: {
       store: {
@@ -73,6 +76,10 @@ function installChatHost(): void {
       }
     },
     hasSession: (id: string) => h.records.get(id)?.lease.claimStatus === 'live',
+    getPersistedVisibleSessionTabIndex: () => ({
+      present: true,
+      sessionIds: [...h.records.keys()].filter((id) => !closedTabs.has(id))
+    }),
     close: async (id: string) => {
       closed.push(id)
     },
@@ -489,16 +496,25 @@ describe('worker-start --terminal orca_session_id:<chat>', () => {
       })
     ])
 
-    // The session ends: both surfaces now read the same exit.
+    // Its agent rests (the idle sweep, or the user's Stop): the record a rest writes reads as an
+    // exit, but the chat is open and its next turn starts the agent, as an idle terminal waits.
     h.records.set(
       SESSION_Z,
       sessionRecord(SESSION_Z, {
         lease: {
           claimStatus: 'released',
-          deathEvidence: { kind: 'exit-observed', detail: 'closed', observedAt: 2 }
+          deathEvidence: { kind: 'exit-observed', detail: 'rested', observedAt: 2 }
         }
       })
     )
+    const resting = await as(SESSION_X, 'orchestration.workerShow', { dispatch: dispatchId })
+    expect(resting).toMatchObject({
+      observation: { status: 'live' },
+      projection: { liveness: { verdict: 'live' }, nextAction: { kind: 'none' } }
+    })
+
+    // The user closes the chat: both surfaces now read the same exit.
+    closedTabs.add(SESSION_Z)
     const shown = await as(SESSION_X, 'orchestration.workerShow', { dispatch: dispatchId })
     expect(shown).toMatchObject({
       observation: { status: 'exited' },
