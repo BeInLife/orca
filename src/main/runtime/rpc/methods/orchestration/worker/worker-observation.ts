@@ -4,13 +4,11 @@ import type { OrchestrationDb } from '../../../../orchestration/db'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 import { parseWorkerTerminalHostScope } from '../../../../orchestration/worker-terminal-process-liveness'
 import { projectFleetWorker } from './worker-list-projection'
-import {
-  observeStructuredWorker,
-  resolveStructuredWorkerForDispatch
-} from '../../orchestration-structured-worker-lifecycle'
+import { resolveStructuredWorkerForDispatch } from '../../orchestration-structured-worker-lifecycle'
 import { structuredWorkerAddressable } from '../../../../structured-worker-custody'
 import { parseOrcaSessionAddress } from '../../../../../../shared/orca-session-address'
 import {
+  observeResolvedStructuredAssignee,
   observeStructuredAssignee,
   structuredWorkerSessionId
 } from '../../../../structured-worker-authority'
@@ -34,7 +32,8 @@ export async function inspectWorkerTerminal(
   /** Set only on a proven-exact worker parked on a prompt that needs a human. */
   agentWait?: RuntimeTerminalInteractiveWait | null
   /** Structured workers only: whether mail still reaches it — at rest included, since the mail
-   *  starts it. Absent when ownership cannot be read. `status` stays the process verdict. */
+   *  starts it. Absent when ownership cannot be read. A held worker at rest reads `live`
+   *  (`observeResolvedStructuredAssignee`). */
   addressable?: boolean
   /** The handle that actually resolved: the durable one, or a live handle re-minted from the
    *  recorded process incarnation after the durable handle went stale. Null when none resolved. */
@@ -60,10 +59,14 @@ export async function inspectWorkerTerminal(
       paneKey: structured.paneKey,
       processIncarnation: structured.processIncarnation
     })
-    const observation = observeStructuredWorker(structured)
+    const sessionId = structuredWorkerSessionId(structured)
+    const observation = observeResolvedStructuredAssignee(
+      { kind: 'worker', sessionId, handle: structured.handle },
+      db
+    )
     const addressable = structuredWorkerAddressable(
       db,
-      structuredWorkerSessionId(structured),
+      sessionId,
       db.getWorkerTerminalResourceByHandle?.(structured.handle)
     )
     return {

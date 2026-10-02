@@ -182,19 +182,41 @@ export function observeStructuredAssignee(
   db: OrchestrationDb | null | undefined
 ): StructuredWorkerObservation | null {
   const assignee = resolveStructuredAssignee(address, db)
-  return assignee ? observeResolvedStructuredAssignee(assignee) : null
+  return assignee ? observeResolvedStructuredAssignee(assignee, db) : null
 }
 
+/**
+ * The one at-rest rule every assignee reader (worker-list, worker-show, terminal read) applies. An
+ * agent rests (the idle sweep, a restart, the user's Stop) with its lease released and death
+ * evidence written, yet a worker still held is reached by its next turn, which starts the agent
+ * again, as an idle terminal agent waits at its prompt: live. Held means a chat this host still
+ * owns (its tab listed, its record current), or a minted worker orchestration can still address.
+ * Anything else that exited has exited. Teardown and close keep the process verdict
+ * (`observeStructuredSession`).
+ */
 export function observeResolvedStructuredAssignee(
-  assignee: StructuredAssignee
+  assignee: StructuredAssignee,
+  db: OrchestrationDb | null | undefined
 ): StructuredWorkerObservation {
-  return assignee.kind === 'chat'
-    ? observeChatAssignee(assignee.sessionId)
-    : observeStructuredSession(assignee.sessionId)
+  const observation = observeStructuredSession(assignee.sessionId)
+  if (observation.status !== 'exited') {
+    return observation
+  }
+  const held =
+    assignee.kind === 'chat'
+      ? structuredWorkerOwned(assignee.sessionId)
+      : structuredWorkerAddressable(
+          db,
+          assignee.sessionId,
+          db?.getWorkerTerminalResourceByHandle?.(assignee.handle)
+        )
+  return held === true ? { status: 'live' } : observation
 }
 
 /** A structured session a Dispatch is assigned to, by the session running it now. */
-export type StructuredAssignee = { kind: 'worker' | 'chat'; sessionId: string }
+export type StructuredAssignee =
+  | { kind: 'worker'; sessionId: string; handle: string }
+  | { kind: 'chat'; sessionId: string }
 
 /**
  * The one resolver from an assignee address to the structured session running it now: a minted
@@ -212,7 +234,7 @@ export function resolveStructuredAssignee(
     ? resolveStructuredWorkerIdentityForSession(canonicalOrcaSessionId(named), db)
     : resolveStructuredWorkerIdentity(address, db)
   if (worker) {
-    return { kind: 'worker', sessionId: structuredWorkerSessionId(worker) }
+    return { kind: 'worker', sessionId: structuredWorkerSessionId(worker), handle: worker.handle }
   }
   if (!named) {
     return null
@@ -226,19 +248,6 @@ export function resolveStructuredAssignee(
     throw otherHostSessionRefusal(named)
   }
   return executing.kind === 'here' ? { kind: 'chat', sessionId: executing.sessionId } : null
-}
-
-/**
- * A chat's agent rests (the idle sweep, or the user's Stop) with its lease released and death
- * evidence written, yet the chat is open and its next turn starts the agent again, as an idle
- * terminal agent waits at its prompt: live. Only a chat gone from this host (tab closed, record not
- * current) has exited.
- */
-function observeChatAssignee(sessionId: string): StructuredWorkerObservation {
-  const observation = observeStructuredSession(sessionId)
-  return observation.status === 'exited' && structuredWorkerOwned(sessionId) === true
-    ? { status: 'live' }
-    : observation
 }
 
 /** A worker's liveness, observed on the session running it now (see `structuredWorkerSessionId`). */

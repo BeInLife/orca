@@ -143,7 +143,10 @@ function observeStructuredAssigneeSession(
   try {
     const assignee = resolveStructuredAssignee(handle, db)
     return assignee
-      ? { sessionId: assignee.sessionId, observation: observeResolvedStructuredAssignee(assignee) }
+      ? {
+          sessionId: assignee.sessionId,
+          observation: observeResolvedStructuredAssignee(assignee, db)
+        }
       : null
   } catch (error) {
     return {

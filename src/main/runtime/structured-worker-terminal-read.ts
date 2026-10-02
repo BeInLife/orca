@@ -37,11 +37,12 @@ import type { OrchestrationDb } from './orchestration/db'
 import { boundStructuredJournalTail } from './orchestration/structured-worker-journal-archive'
 import { readStructuredJournalPage } from './orchestration/structured-worker-journal-page'
 import {
-  observeStructuredSession,
+  observeResolvedStructuredAssignee,
   resolveStructuredAssignee,
   resolveStructuredWorkerAuthority,
   structuredWorkerSessionId,
-  structuredWorkerTerminalState
+  structuredWorkerTerminalState,
+  type StructuredAssignee
 } from './structured-worker-authority'
 import { readTerminalTail } from './terminal-tail-read'
 
@@ -59,10 +60,11 @@ export async function readStructuredWorkerTerminal(args: {
   cursor?: number
   limit?: number
 }): Promise<RuntimeTerminalRead | null> {
-  const sessionId = structuredSessionReadTarget(args.handle, args.db)
-  if (!sessionId) {
+  const assignee = structuredSessionReadTarget(args.handle, args.db)
+  if (!assignee) {
     return null
   }
+  const { sessionId } = assignee
   if (args.cursor !== undefined) {
     // No index can be re-anchored here, so this refusal names no paging alternative — there is
     // none. `terminal.read`'s cursor indexes an append-only completed-line buffer with a monotone
@@ -94,7 +96,10 @@ export async function readStructuredWorkerTerminal(args: {
   )
   const read = readTerminalTail({
     handle: args.handle,
-    status: structuredWorkerTerminalState(observeStructuredSession(sessionId).status),
+    // The status worker-show and worker-list report for the same worker.
+    status: structuredWorkerTerminalState(
+      observeResolvedStructuredAssignee(assignee, args.db).status
+    ),
     previewLines: lines,
     // Unreachable without a cursor, and deliberately empty rather than a copy of `lines`: a
     // running turn's text is still growing, so calling it "completed" is the `"hel"`/`"hello"`
@@ -115,10 +120,15 @@ export async function readStructuredWorkerTerminal(args: {
 }
 
 /** The session a read names, as it runs now: a worker's successor, or a chat's live session. */
-function structuredSessionReadTarget(handle: string, db: OrchestrationDb | null): string | null {
+function structuredSessionReadTarget(
+  handle: string,
+  db: OrchestrationDb | null
+): StructuredAssignee | null {
   if (parseOrcaSessionAddress(handle)) {
-    return resolveStructuredAssignee(handle, db)?.sessionId ?? null
+    return resolveStructuredAssignee(handle, db)
   }
   const worker = resolveStructuredWorkerAuthority(handle, db)?.identity
-  return worker ? structuredWorkerSessionId(worker) : null
+  return worker
+    ? { kind: 'worker', sessionId: structuredWorkerSessionId(worker), handle: worker.handle }
+    : null
 }

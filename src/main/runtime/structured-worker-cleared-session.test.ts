@@ -33,6 +33,8 @@ const { OrchestrationDb } = await import('./orchestration/db')
 const { structuredWorkerOwesWork } = await import('./structured-worker-custody')
 const { projectWorkerFleet } =
   await import('./rpc/methods/orchestration/worker/worker-list-projection')
+const { inspectWorkerTerminal } =
+  await import('./rpc/methods/orchestration/worker/worker-observation')
 const { AGENT_SESSION_NOT_ATTACHED } =
   await import('../native-chat/agent-session-wire/structured-agent-session-mutation-admission')
 const {
@@ -146,7 +148,10 @@ function installClearedWorkerHost(): void {
 }
 
 /** A ready worker-start Dispatch whose worker is this structured worker; returns its id. */
-function startWorkerDispatch(db: InstanceType<typeof OrchestrationDb>, handle: string): string {
+function startWorkerDispatch(
+  db: InstanceType<typeof OrchestrationDb>,
+  worker: { handle: string; paneKey: string }
+): string {
   const task = db.createTask({ runId: 'run_legacy_local', spec: 'work' })
   const { dispatch } = db.createStartingWorkerDispatch({
     taskId: task.id,
@@ -156,8 +161,8 @@ function startWorkerDispatch(db: InstanceType<typeof OrchestrationDb>, handle: s
   })
   db.prepareStartingWorkerAuthority({
     dispatchId: dispatch.id,
-    handle,
-    paneKey: mintStructuredWorkerPaneKey(MINTED),
+    handle: worker.handle,
+    paneKey: worker.paneKey,
     processIncarnation: structuredWorkerProcessIncarnation(MINTED),
     worktreeId: 'wt_1',
     effects: [],
@@ -261,7 +266,7 @@ describe('a structured worker continued by /clear is served by its successor', (
   it("keeps the successor running for the worker's open Dispatch", () => {
     const db = new OrchestrationDb(':memory:')
     try {
-      startWorkerDispatch(db, registerWorker().handle)
+      startWorkerDispatch(db, registerWorker())
       expect(structuredWorkerOwesWork(db, records.get(SUCCESSOR)!)).toBe(true)
     } finally {
       db.close()
@@ -271,7 +276,7 @@ describe('a structured worker continued by /clear is served by its successor', (
   it("lists the worker with its successor's agent-status row, opening no journal", () => {
     const db = new OrchestrationDb(':memory:')
     try {
-      const dispatchId = startWorkerDispatch(db, registerWorker().handle)
+      const dispatchId = startWorkerDispatch(db, registerWorker())
       const now = Date.now()
       const fleet = projectWorkerFleet({
         db,
@@ -286,6 +291,39 @@ describe('a structured worker continued by /clear is served by its successor', (
         stage: { activity: 'working' }
       })
       expect(journalReads).toEqual([])
+    } finally {
+      db.close()
+    }
+  })
+
+  it('reads a worker at rest with its Dispatch open as live in worker-list, worker-show and terminal read', async () => {
+    // A rest (the idle sweep, a restart, the user's Stop) releases the lease with death evidence.
+    records.set(SUCCESSOR, record(SUCCESSOR, true))
+    const db = new OrchestrationDb(':memory:')
+    try {
+      const identity = registerWorker()
+      const dispatchId = startWorkerDispatch(db, identity)
+      const now = Date.now()
+      const fleet = projectWorkerFleet({
+        db,
+        rows: db.listWorkerTerminalResources({ dispatchIds: [dispatchId], limit: 1 }),
+        attentionFacts: db.getWorkerAttentionFactsForDispatches([dispatchId], now),
+        statuses: [],
+        limit: 1,
+        now
+      })
+      expect(fleet.workers[0]?.liveness).toMatchObject({ verdict: 'live' })
+      expect(fleet.workers[0]?.nextAction.kind).not.toBe('recover')
+      expect(await inspectWorkerTerminal(new OrcaRuntimeService(), db, dispatchId)).toMatchObject({
+        exact: true,
+        status: 'live',
+        addressable: true
+      })
+      expect((await readStructuredWorkerTerminal({ handle: identity.handle, db }))?.status).toBe(
+        'running'
+      )
+      // Teardown and close keep the process verdict.
+      expect(observeStructuredWorker(identity).status).toBe('exited')
     } finally {
       db.close()
     }
@@ -329,6 +367,15 @@ describe('terminal read by the Orca session ID an agent is shown', () => {
     expect(historyAsked).toEqual([SUCCESSOR])
     expect(read).toMatchObject({ status: 'running', nextCursor: null, truncated: false })
     expect(read?.tail.join('\n')).toContain('POST-CLEAR')
+  })
+
+  it('reads a chat at rest as running, as worker-show and worker-list do', async () => {
+    records.set(SUCCESSOR, record(SUCCESSOR, true))
+    const read = await readStructuredWorkerTerminal({
+      handle: `orca_session_id:${MINTED}`,
+      db: null
+    })
+    expect(read?.status).toBe('running')
   })
 
   it('refuses a cursor, as for any structured session', async () => {
