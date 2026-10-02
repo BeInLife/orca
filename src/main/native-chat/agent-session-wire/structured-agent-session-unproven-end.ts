@@ -5,7 +5,10 @@
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { StructuredAgentSessionEndUnprovenEvent } from './structured-agent-session-adapter'
-import { captureUnfinishedStructuredAgentSessionWork } from './structured-agent-session-dead-generation-settlement'
+import {
+  captureUnfinishedStructuredAgentSessionWork,
+  unfinishedStructuredAgentSessionWorkWasInterrupted
+} from './structured-agent-session-dead-generation-settlement'
 import type {
   StructuredAgentSessionHostSession,
   StructuredAgentSessionOwedWindDown,
@@ -18,8 +21,14 @@ import {
 } from './structured-agent-session-provider-child'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 
+type UnprovenEndSession = Pick<
+  StructuredAgentSessionHostSession,
+  'child' | 'owesProviderChildWindDown' | 'journal'
+>
+
 export type StructuredAgentSessionUnprovenEndContext = {
-  sessions: Map<string, StructuredAgentSessionHostSession>
+  sessions: Map<string, UnprovenEndSession>
+  now: () => number
   publishStatus?: (sessionId: string) => void
   wakeDelivery?: (sessionId: string) => void
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
@@ -40,7 +49,12 @@ export function recordUnprovenStructuredAgentSessionEndUnderSerialize(
   const cursor = session.journal.cursor()
   // A stop someone asked for keeps its cause and ask; the end only adds that it failed.
   const owed = pendingProviderChildWindDown(session)
-  const work = captureUnfinishedStructuredAgentSessionWork(session.journal)
+  // The rule an observed exit uses: an idle approval or question left open is not interrupted work.
+  const interruptedWork = unfinishedStructuredAgentSessionWorkWasInterrupted(
+    captureUnfinishedStructuredAgentSessionWork(session.journal),
+    session.journal,
+    context.now()
+  )
   session.owesProviderChildWindDown = owed
     ? { ...owed, failedAt: cursor }
     : {
@@ -52,7 +66,7 @@ export function recordUnprovenStructuredAgentSessionEndUnderSerialize(
         ended: {
           reason: report.reason,
           ...(report.failure ? { failure: report.failure } : {}),
-          interruptedWork: work.hadUnsettledSubmissions || work.items.length > 0
+          interruptedWork
         }
       }
   context.publishStatus?.(sessionId)

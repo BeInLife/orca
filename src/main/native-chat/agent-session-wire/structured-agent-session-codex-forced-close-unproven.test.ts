@@ -276,3 +276,31 @@ it.each([
     failure: { kind: 'hostFault' }
   })
 })
+
+it('still tells why a turn a forced close cut short stopped when the chat is closed before the late exit', async () => {
+  const connection = codex.connections[0]!
+  const old = closesOnlyOnceExited(connection)
+  const threadId = adapter['sessions'].get(SESSION)!.threadId
+  connection.handlers.onNotification?.('turn/started', { threadId, turn: { id: 'turn-1' } })
+  await host.flushStreamedEvents(SESSION)
+  const sink = host['runtimeState'].eventSinkFor(SESSION).sink
+  vi.spyOn(sink, 'tryAppendItem').mockReturnValueOnce({ accepted: false, reason: 'failed' })
+  connection.handlers.onUnhandledFrame?.('frame:unknown-method', { method: 'mystery/event' })
+  await vi.waitFor(() => expect(hostSession()?.owesProviderChildWindDown?.ended).toBeDefined())
+
+  // The user closes the chat; that close cannot prove the exit either.
+  await expect(host.close(SESSION, 'user-close')).rejects.toThrow()
+  old.exit()
+  await vi.waitFor(() => expect(hostSession()?.child).toBeNull())
+  await vi.waitFor(() => expect(hostSession()?.owesProviderChildWindDown).toBeUndefined())
+
+  await vi.waitFor(async () =>
+    expect(await faultRows()).toEqual([
+      "Orca ran into a problem, so this didn't go through. Try again."
+    ])
+  )
+  expect(hostSession()?.lastEndedChild).toMatchObject({
+    cause: 'user-close',
+    failure: { kind: 'hostFault' }
+  })
+})

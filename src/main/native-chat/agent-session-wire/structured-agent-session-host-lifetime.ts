@@ -114,13 +114,15 @@ function owedStop(
     return undefined
   }
   const asked = session.owesProviderChildWindDown
-  const continues = retry && asked !== undefined && sameProviderChild(asked, owed)
+  const sameChild = asked !== undefined && sameProviderChild(asked, owed)
+  const continues = retry && sameChild
   return {
     generation: owed.generation,
     fence: owed.fence,
     cause,
     requestedAt: continues ? asked.requestedAt : session.journal.cursor(),
-    ...(continues && asked.ended ? { ended: asked.ended } : {})
+    // The reported end came before any later ask for this child, so every stop of it settles it.
+    ...(sameChild && asked.ended ? { ended: asked.ended } : {})
   }
 }
 
@@ -168,14 +170,15 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       : {}),
     // Host state must not disagree with the adapter for the steps in between.
     onProviderChildStopped: (verdict) => {
-      // A reported end the stop only proves ends the child as that end, with its failure.
+      // A reported end the stop only proves ends the child as that end, with its failure. A Stop,
+      // close or quit asked for since keeps its own cause, so what it decides for the chat holds.
       const reported = owed?.ended
       const ended =
         stopping !== null &&
         endProviderChild(session, {
           generation: stopping.generation,
           fence: stopping.fence,
-          cause: reported ? 'exit' : cause,
+          cause: reported && cause === 'host-stop' ? 'exit' : cause,
           reason: reported?.reason ?? ('reason' in ending ? ending.reason : undefined) ?? null,
           ...(reported?.failure ? { failure: reported.failure } : {}),
           duringStartup: stopping.phase === 'starting',

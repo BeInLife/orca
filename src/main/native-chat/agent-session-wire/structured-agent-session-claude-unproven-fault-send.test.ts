@@ -417,3 +417,29 @@ it.each([
     failure: { kind: 'hostFault' }
   })
 })
+
+it("still tells why a turn a fault cut short stopped when the user's Stop comes before the late exit", async () => {
+  const connection = claude.connections[0]!
+  await turnRunning(connection)
+  closesUnproven(connection)
+  await faultTheJournal(connection)
+  await adapter.drainObservedExits()
+  await laneDrained()
+  await eventually(() => expect(hostSession()?.owesProviderChildWindDown?.ended).toBeDefined())
+
+  // The turn still reads running, so the user presses Stop; its close cannot prove the exit either.
+  await expect(stop()).resolves.toMatchObject({ ok: true })
+  await laneDrained()
+  exits(connection)
+  await eventually(() => expect(hostSession()?.child).toBeNull())
+  await eventually(() => expect(hostSession()?.owesProviderChildWindDown).toBeUndefined())
+
+  expect(await faultRows()).toEqual([
+    "Orca ran into a problem, so this didn't go through. Try again."
+  ])
+  // The Stop stays the user's; the fault that came first says why the turn ended.
+  expect(hostSession()?.lastEndedChild).toMatchObject({
+    cause: 'user-stop',
+    failure: { kind: 'hostFault' }
+  })
+})
