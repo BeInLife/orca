@@ -9,7 +9,8 @@ import type {
 // Why: v4 reads OpenCode 2's `session_v2` table; v3 caches miss every v2 session.
 // v5 merges a migrated session's two rows per column instead of picking one, so
 // v4 caches hold zeroed costs and pre-migration metadata.
-export const OPENCODE_USAGE_SCHEMA_VERSION = 5
+// v6 normalizes input to include cache reads and writes.
+export const OPENCODE_USAGE_SCHEMA_VERSION = 6
 
 export const openCodeUsageProvider = {
   id: 'opencode',
