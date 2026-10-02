@@ -31,7 +31,7 @@ const { stopStructuredWorker, readStructuredWorkerJournal, captureStructuredWork
 const { OrcaRuntimeService } = await import('./orca-runtime')
 const { OrchestrationDb } = await import('./orchestration/db')
 const { structuredWorkerOwesWork } = await import('./structured-worker-custody')
-const { projectWorkerFleet } =
+const { projectFleetWorker, projectWorkerFleet } =
   await import('./rpc/methods/orchestration/worker/worker-list-projection')
 const { inspectWorkerTerminal } =
   await import('./rpc/methods/orchestration/worker/worker-observation')
@@ -324,6 +324,29 @@ describe('a structured worker continued by /clear is served by its successor', (
       )
       // Teardown and close keep the process verdict.
       expect(observeStructuredWorker(identity).status).toBe('exited')
+    } finally {
+      db.close()
+    }
+  })
+
+  it('worker-show after a restart installs the session host first, so its verdicts agree', async () => {
+    records.set(SUCCESSOR, record(SUCCESSOR, true))
+    const db = new OrchestrationDb(':memory:')
+    try {
+      const dispatchId = startWorkerDispatch(db, registerWorker())
+      const installed = hostRef.current
+      // After a restart nothing has installed the host until something reads a session.
+      hostRef.current = null
+      const runtime = new OrcaRuntimeService()
+      vi.spyOn(runtime, 'ensureStructuredAgentSessionHost').mockImplementation(async () => {
+        hostRef.current = installed
+      })
+
+      // worker-show reads the observation first, then the fleet projection.
+      expect(await inspectWorkerTerminal(runtime, db, dispatchId)).toMatchObject({ status: 'live' })
+      expect((await projectFleetWorker(runtime, db, dispatchId))?.liveness).toMatchObject({
+        verdict: 'live'
+      })
     } finally {
       db.close()
     }

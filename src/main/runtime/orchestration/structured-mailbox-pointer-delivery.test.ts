@@ -152,21 +152,29 @@ function harness(options: {
       stored.set(row.mailbox_handle, row),
     deleteStructuredPointerOperation: (key: string) => stored.delete(key)
   }
-  const delivery = new OrchestrationStructuredMailboxPointerDelivery({
-    getDb: () => db as never,
-    getMessageWaiters: () => undefined,
-    resolveStructuredTarget: (mailboxHandle) =>
-      mailboxHandle === mailbox ? { sessionId: IDENTITY.sessionId, dispatchId } : null,
-    getCliCommand: () => 'orca-dev',
-    host: {
-      readGateFacts: async () =>
-        journal === null ? null : { ...structuredSessionGateFacts(journal), submissions },
-      currentFence: () => 4,
-      send
-    }
-  })
+  const lane = () =>
+    new OrchestrationStructuredMailboxPointerDelivery({
+      getDb: () => db as never,
+      getMessageWaiters: () => undefined,
+      resolveStructuredTarget: (mailboxHandle) =>
+        mailboxHandle === mailbox ? { sessionId: IDENTITY.sessionId, dispatchId } : null,
+      getCliCommand: () => 'orca-dev',
+      host: {
+        readGateFacts: async () =>
+          journal === null ? null : { ...structuredSessionGateFacts(journal), submissions },
+        currentFence: () => 4,
+        send
+      }
+    })
+  let delivery = lane()
   return {
-    delivery,
+    get delivery() {
+      return delivery
+    },
+    /** A new process over the same database: nothing the lane kept in memory survives. */
+    restart: () => {
+      delivery = lane()
+    },
     markAsDelivered,
     preambleState: () => preambleRow?.state,
     preambleOperationId: () => preambleRow?.operation_id ?? null,
@@ -661,6 +669,22 @@ describe("a chat assignee's dispatch preamble", () => {
     h.delivery.onJournalActivity(IDENTITY.sessionId)
     await flush()
     expect(h.send.mock.calls.at(-1)![0].operationId).not.toBe(first)
+  })
+
+  it('replays a send left in doubt under its own id after a restart, never sending the task again', async () => {
+    const h = harness({ journal: idleJournal(), preamble: PREAMBLE, dispatchState: 'unknown' })
+    h.delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    const first = h.send.mock.calls[0]![0].operationId
+    // Restart recovery leaves the in-flight send `unknown`; the startup scan redrives the row.
+    h.setSubmissions([
+      { clientMessageId: first, dispatchState: 'unknown', submittedAt: Date.now() }
+    ])
+    h.restart()
+    h.delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    // The host answers a recorded id from its ledger and starts nothing.
+    expect(h.send.mock.calls.map(([input]) => input.operationId)).toEqual([first, first])
   })
 
   it('keeps its operation id on its own row, never in the mailbox ledger a mail reset clears', async () => {

@@ -141,7 +141,10 @@ export function resolveStructuredPointerOperation(args: {
     sessionId: args.sessionId,
     batchFingerprint,
     submissions: args.submissions,
-    mintedByThisProcess: stored?.operation_id === args.sentByThisProcess,
+    // A send that keeps its id on its own durable row (the preamble) owns that id across a restart,
+    // so a recorded `unknown` replays under it rather than going again as a new turn.
+    mintedByThisProcess:
+      args.ledger !== undefined || stored?.operation_id === args.sentByThisProcess,
     now
   })
   if (attempt === 'stamp' || attempt === 'park') {

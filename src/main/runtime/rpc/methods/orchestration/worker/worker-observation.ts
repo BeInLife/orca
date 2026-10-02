@@ -6,6 +6,7 @@ import { parseWorkerTerminalHostScope } from '../../../../orchestration/worker-t
 import { projectFleetWorker } from './worker-list-projection'
 import { resolveStructuredWorkerForDispatch } from '../../orchestration-structured-worker-lifecycle'
 import { structuredWorkerAddressable } from '../../../../structured-worker-custody'
+import { isStructuredSessionAddress } from '../../../../structured-worker-identity'
 import { parseOrcaSessionAddress } from '../../../../../../shared/orca-session-address'
 import {
   observeResolvedStructuredAssignee,
@@ -44,6 +45,10 @@ export async function inspectWorkerTerminal(
     worker?.agent_terminal_handle ?? db.getDispatchContextById(dispatchId)?.assignee_handle
   if (!terminalHandle) {
     return { terminal: null, exact: false, status: 'unattached', terminalHandle: null }
+  }
+  if (isStructuredSessionAddress(terminalHandle)) {
+    // A session is read off the host's record store, which nothing has installed after a restart.
+    await runtime.ensureStructuredAgentSessionHost().catch(() => undefined)
   }
   const structured = resolveStructuredWorkerForDispatch(db, dispatchId)
   if (structured) {
@@ -85,7 +90,6 @@ export async function inspectWorkerTerminal(
     if (db.getDispatchContextById(dispatchId)?.assignee_handle !== terminalHandle) {
       return { terminal: null, exact: false, status: 'identity_changed', terminalHandle: null }
     }
-    await runtime.ensureStructuredAgentSessionHost().catch(() => undefined)
     const observation = observeStructuredAssignee(terminalHandle, db) ?? {
       status: 'unverifiable' as const
     }
