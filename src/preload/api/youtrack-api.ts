@@ -3,6 +3,10 @@ import type {
   YouTrackCommentsResult,
   YouTrackConnectionStatus,
   YouTrackConnectResult,
+  YouTrackCreateIssueArgs,
+  YouTrackProjectFieldsResult,
+  YouTrackProjectsResult,
+  YouTrackUpdateFieldArgs,
   YouTrackIssueResult,
   YouTrackListIssuesArgs,
   YouTrackListIssuesResult,
@@ -27,4 +31,11 @@ export type YouTrackApi = {
     idReadable: string
     option: YouTrackStateOption
   }) => Promise<YouTrackIssueResult>
+  listProjects: (args?: { force?: boolean }) => Promise<YouTrackProjectsResult>
+  getProjectFields: (args: {
+    projectId: string
+    force?: boolean
+  }) => Promise<YouTrackProjectFieldsResult>
+  updateField: (args: YouTrackUpdateFieldArgs) => Promise<YouTrackIssueResult>
+  createIssue: (args: YouTrackCreateIssueArgs) => Promise<YouTrackIssueResult>
 }

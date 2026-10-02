@@ -19,11 +19,11 @@ import { YouTrackBlockedBadge, YouTrackStatePill } from './YouTrackIssueList'
 import {
   YouTrackCommentComposer,
   YouTrackCommentsSection,
-  YouTrackFieldsAside,
   YouTrackLinksSection
 } from './youtrack-issue-sections'
 import { startYouTrackIssueWorkspace, useHasYouTrackIssueWorkspace } from './youtrack-workspace'
 import { useYouTrackStore } from './youtrack-store'
+import { YouTrackFieldsAside } from './YouTrackFieldsAside'
 
 function StatePicker({
   issue,
@@ -363,7 +363,7 @@ export function YouTrackIssueSheet({
                   onRetry={() => loadComments(displayed.idReadable, requestRef.current)}
                 />
               </div>
-              <YouTrackFieldsAside issue={displayed} />
+              <YouTrackFieldsAside issue={displayed} onIssueChanged={handleIssueChanged} />
             </div>
 
             <YouTrackCommentComposer

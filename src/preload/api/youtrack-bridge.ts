@@ -10,5 +10,9 @@ export const youtrackApi: YouTrackApi = {
   getComments: (args) => ipcRenderer.invoke('youtrack:getComments', args),
   addComment: (args) => ipcRenderer.invoke('youtrack:addComment', args),
   getStateOptions: (args) => ipcRenderer.invoke('youtrack:getStateOptions', args),
-  setState: (args) => ipcRenderer.invoke('youtrack:setState', args)
+  setState: (args) => ipcRenderer.invoke('youtrack:setState', args),
+  listProjects: (args) => ipcRenderer.invoke('youtrack:listProjects', args),
+  getProjectFields: (args) => ipcRenderer.invoke('youtrack:getProjectFields', args),
+  updateField: (args) => ipcRenderer.invoke('youtrack:updateField', args),
+  createIssue: (args) => ipcRenderer.invoke('youtrack:createIssue', args)
 }
