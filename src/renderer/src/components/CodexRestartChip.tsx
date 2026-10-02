@@ -110,8 +110,8 @@ function LoudRestartOverlay({
       aria-live="assertive"
       aria-labelledby={titleId}
       aria-describedby={bodyId}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) {
+      onMouseDown={(event) => {
+        if (event.button === 0 && event.target === event.currentTarget) {
           onDismiss()
         }
       }}

@@ -36,6 +36,16 @@ test('account switch actions return keyboard input to the terminal', async ({
     await expect(dialog).toBeVisible()
     await expect(dialog).toBeFocused()
     if (action === 'outside') {
+      const cardText = await dialog.getByText(/Restart this session to use/).boundingBox()
+      const backdrop = await dialog.boundingBox()
+      if (!cardText || !backdrop) {
+        throw new Error('Account prompt has no rendered bounds')
+      }
+      await orcaPage.mouse.move(cardText.x + 8, cardText.y + 8)
+      await orcaPage.mouse.down()
+      await orcaPage.mouse.move(backdrop.x + 8, backdrop.y + 8)
+      await orcaPage.mouse.up()
+      await expect(dialog).toBeVisible()
       await orcaPage.screenshot({ path: testInfo.outputPath('account-switched.png') })
       await dialog.click({ position: { x: 8, y: 8 } })
     } else if (action === 'escape') {

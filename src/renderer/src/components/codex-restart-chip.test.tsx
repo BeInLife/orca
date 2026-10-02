@@ -291,7 +291,7 @@ describe('CodexRestartChip pane focus', () => {
       const dialog = container.querySelector('[role="dialog"]')!
       await act(async () => {
         if (action === 'outside') {
-          dialog.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+          dialog.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
         } else if (action === 'escape') {
           dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
         } else {
@@ -318,6 +318,30 @@ describe('CodexRestartChip pane focus', () => {
     expect(container.querySelector('[role="dialog"]')).not.toBeNull()
     expect(returnFocus).not.toHaveBeenCalled()
     expect(forgetStalePanes).not.toHaveBeenCalled()
+  })
+
+  it('does not dismiss when a card text selection ends on the backdrop', async () => {
+    await renderPane(true)
+    const dialog = container.querySelector('[role="dialog"]')!
+    await act(async () => {
+      dialog.querySelector('div')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      dialog.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+      dialog.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(returnFocus).not.toHaveBeenCalled()
+    expect(forgetStalePanes).not.toHaveBeenCalled()
+  })
+
+  it('does not dismiss on a secondary mouse button press', async () => {
+    await renderPane(true)
+    await act(async () => {
+      container
+        .querySelector('[role="dialog"]')!
+        .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 2 }))
+    })
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(returnFocus).not.toHaveBeenCalled()
   })
 
   it('focuses the dialog itself for the active stale pane', async () => {
