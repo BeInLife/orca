@@ -250,6 +250,16 @@ export function collectBaseLineBlocks(root, comparisonBase, files = null) {
 }
 
 export function isMovedCode(highlightedLines, baseBlocks) {
+  return createMovedCodeMatcher(baseBlocks)(highlightedLines)
+}
+
+export function createMovedCodeMatcher(baseBlocks) {
+  // Base-revision blocks stay fixed for the gate run; normalize each visited block once.
+  const normalizedBlocks = new Map()
+  return (highlightedLines) => matchMovedCode(highlightedLines, baseBlocks, normalizedBlocks)
+}
+
+function matchMovedCode(highlightedLines, baseBlocks, normalizedBlocks) {
   const needle = highlightedLines.map(normalizeSourceLine).filter((line) => line !== '')
   if (needle.length === 0) {
     return false
@@ -262,8 +272,12 @@ export function isMovedCode(highlightedLines, baseBlocks) {
   // and nearly all of it must be present. Genuinely new code shares neither the
   // anchor nor the ordering, so it stays reported.
   const MIN_COVERAGE = 0.9
-  return baseBlocks.some((rawHaystack) => {
-    const haystack = rawHaystack.map(normalizeSourceLine).filter((line) => line !== '')
+  return baseBlocks.some((block) => {
+    let haystack = normalizedBlocks.get(block)
+    if (!haystack) {
+      haystack = block.map(normalizeSourceLine).filter((line) => line !== '')
+      normalizedBlocks.set(block, haystack)
+    }
     for (let start = 0; start < haystack.length; start += 1) {
       if (haystack[start] !== needle[0]) {
         continue
@@ -301,7 +315,8 @@ export function diagnosticTouchesAddedLines(
   diagnostic,
   rangesByFile,
   root = process.cwd(),
-  baseBlocks = []
+  baseBlocks = [],
+  movedCodeMatcher = isMovedCode
 ) {
   const file = normalizedDiagnosticPath(root, diagnostic.filename)
   const ranges = rangesByFile.get(file)
@@ -313,7 +328,7 @@ export function diagnosticTouchesAddedLines(
     if (lineRange === null || !overlapsAddedLines(lineRange.start, lineRange.end, ranges)) {
       return false
     }
-    return !isMovedCode(
+    return !movedCodeMatcher(
       diagnosticHighlightedLines(root, diagnostic.filename, label.span),
       baseBlocks
     )
@@ -429,6 +444,7 @@ export function main(
   }
 
   const baseBlocks = collectBaseLineBlocks(root, comparisonBase)
+  const movedCodeMatcher = createMovedCodeMatcher(baseBlocks)
 
   let failures = 0
   for (const scan of OXLINT_SCANS) {
@@ -437,7 +453,7 @@ export function main(
         !isSuppressedDiagnostic(diagnostic, root) &&
         !isCastingDirectiveUnusedWarning(diagnostic, root) &&
         !isAntiSlopDirectiveUnusedWarning(diagnostic, root) &&
-        diagnosticTouchesAddedLines(diagnostic, rangesByFile, root, baseBlocks)
+        diagnosticTouchesAddedLines(diagnostic, rangesByFile, root, baseBlocks, movedCodeMatcher)
     )
     for (const diagnostic of diagnostics) {
       printDiagnostic(diagnostic, root)
