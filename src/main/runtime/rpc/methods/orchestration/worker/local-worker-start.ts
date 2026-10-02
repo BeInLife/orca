@@ -232,7 +232,7 @@ export async function startLocalWorker(args: {
     if (chatTerminal) {
       const chat = resolveStructuredAssignee(terminalHandle, db)
       const takes = chat
-        ? await awaitChatTakesTurn(chat.sessionId, params.timeoutMs ?? 60_000, db)
+        ? await awaitChatTakesTurn(chat.sessionId, params.timeoutMs ?? 60_000)
         : ({ deliver: false, retain: 'session-not-attached' } as const)
       if (!takes.deliver) {
         throw new Error(`Agent did not become ready (${chatNotReadyStatus(takes)}).`)

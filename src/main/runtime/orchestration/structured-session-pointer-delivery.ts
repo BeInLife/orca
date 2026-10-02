@@ -14,7 +14,6 @@ import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
-import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import {
   activeStructuredAgentSessionTurnId,
   projectStructuredAgentSessionStatus
@@ -50,12 +49,11 @@ export type StructuredSessionGateFacts = {
 /**
  * Projects the gate facts off a session's live items and recorded sends.
  *
- * Reuses the rule the chat view's Working reads (`isStructuredAgentSessionMainAgentWorking`), so
- * the delivery gate and the visible "working" state can never disagree. A send the provider has
- * not answered is a turn: Claude writes its running row only when it echoes the user's message,
- * seconds after the send, and a send in that gap folds into the turn it starts. Orchestration's
- * own sends (`isOrchestrationSend`) are left to its operation ledger, which already settles,
- * parks or replays each one. Both must be
+ * A send in its echo window is a running turn, whoever sent it: Claude writes its running row only
+ * when it echoes the message, seconds after the send, and a send in that gap folds into the turn it
+ * starts. In that window the gate and the chat's Working agree. They disagree on one state: a live
+ * `unknown` send, which Working still counts, while the gate keeps the mail lane's policy of not
+ * holding new mail behind a send in doubt (the next turn's end also releases that doubt). Both must be
  * answered from the fully reduced timeline: a settled turn is TOMBSTONED rather than rewritten to
  * `completed`, so on a bounded tail page an idle session and a running turn whose lifecycle item
  * was pushed off the end look identical — and idle-with-history is the normal steady state of a
@@ -63,16 +61,12 @@ export type StructuredSessionGateFacts = {
  */
 export function structuredSessionGateFacts(
   items: readonly AgentJournalRenderItem[],
-  submissions: readonly AgentJournalSubmission[] = [],
-  currentFence?: number | null,
-  isOrchestrationSend: (clientMessageId: string) => boolean = () => false
+  submissions: readonly Pick<AgentJournalSubmission, 'dispatchState'>[] = []
 ): StructuredSessionGateFacts {
   return {
-    turnRunning: isStructuredAgentSessionMainAgentWorking(
-      activeStructuredAgentSessionTurnId(items),
-      submissions.filter((submission) => !isOrchestrationSend(submission.clientMessageId)),
-      currentFence
-    ),
+    turnRunning:
+      activeStructuredAgentSessionTurnId(items) !== null ||
+      submissions.some((submission) => submission.dispatchState === 'pending'),
     awaitingHuman: projectStructuredAgentSessionStatus(items) === 'attention'
   }
 }

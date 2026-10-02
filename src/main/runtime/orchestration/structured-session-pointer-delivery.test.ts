@@ -84,32 +84,17 @@ describe('structured session gate facts', () => {
 })
 
 describe('a send the provider has not answered yet', () => {
-  function sent(
-    dispatchState: AgentJournalSubmission['dispatchState'],
-    fence = 3
-  ): AgentJournalSubmission {
-    return {
-      clientMessageId: 'user-turn',
-      fence,
-      payloadFingerprint: 'fp',
-      dispatchState,
-      providerItemId: null,
-      reason: null,
-      submittedAt: 1,
-      resolvedAt: null
-    }
-  }
+  const sent = (dispatchState: AgentJournalSubmission['dispatchState']) => [{ dispatchState }]
 
-  it('reads as a running turn before the provider opens it, as the chat shows Working', () => {
-    // Claude writes its running row only when it echoes the user's message, seconds later.
-    expect(structuredSessionGateFacts([], [sent('pending')], 3)).toMatchObject({
-      turnRunning: true
-    })
+  it('reads as a running turn in its echo window, whoever sent it, as the chat shows Working', () => {
+    // Claude writes its running row only when it echoes the message, seconds later.
+    expect(structuredSessionGateFacts([], sent('pending'))).toMatchObject({ turnRunning: true })
   })
 
-  it('stops reading as running once the provider answered it, or it outlived its lease', () => {
-    expect(structuredSessionGateFacts([], [sent('accepted')], 3)).toEqual(IDLE)
-    expect(structuredSessionGateFacts([], [sent('pending', 2)], 3)).toEqual(IDLE)
+  it('stops reading as running once answered, and leaves a send in doubt to the mail policy', () => {
+    expect(structuredSessionGateFacts([], sent('accepted'))).toEqual(IDLE)
+    // A live `unknown` may never clear; the lane does not hold new mail behind it.
+    expect(structuredSessionGateFacts([], sent('unknown'))).toEqual(IDLE)
   })
 })
 

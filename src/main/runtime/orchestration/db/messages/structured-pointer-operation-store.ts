@@ -49,24 +49,7 @@ export function deleteStructuredPointerOperation(
     .run(mailboxHandle)
 }
 
-/** Every send of orchestration's still on record for a session: mail pointers and preambles. */
-export function listStructuredPointerOperationIds(
-  this: OrchestrationDb,
-  sessionId: string
-): Set<string> {
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the SELECT names exactly this column.
-  const rows = this.db
-    .prepare(
-      `SELECT operation_id FROM structured_pointer_operations WHERE session_id = ?
-       UNION SELECT operation_id FROM dispatch_preamble_turns
-        WHERE session_id = ? AND operation_id IS NOT NULL`
-    )
-    .all(sessionId, sessionId) as { operation_id: string }[]
-  return new Set(rows.map((row) => row.operation_id))
-}
-
 export type StructuredPointerOperationStoreMethods = {
-  listStructuredPointerOperationIds: typeof listStructuredPointerOperationIds
   getStructuredPointerOperation: typeof getStructuredPointerOperation
   putStructuredPointerOperation: typeof putStructuredPointerOperation
   deleteStructuredPointerOperation: typeof deleteStructuredPointerOperation
@@ -74,7 +57,6 @@ export type StructuredPointerOperationStoreMethods = {
 
 export function attachStructuredPointerOperationStore(ctor: { prototype: object }): void {
   Object.assign(ctor.prototype, {
-    listStructuredPointerOperationIds,
     getStructuredPointerOperation,
     putStructuredPointerOperation,
     deleteStructuredPointerOperation

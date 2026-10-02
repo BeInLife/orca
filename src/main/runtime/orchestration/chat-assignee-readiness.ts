@@ -7,7 +7,6 @@
 
 import { randomUUID } from 'node:crypto'
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-registry'
-import type { OrchestrationDb } from './db'
 import { readStructuredSessionGateFacts } from './structured-mailbox-pointer-host'
 import {
   decideStructuredSessionPointerDelivery,
@@ -16,8 +15,7 @@ import {
 
 export async function awaitChatTakesTurn(
   sessionId: string,
-  timeoutMs: number,
-  db: OrchestrationDb
+  timeoutMs: number
 ): Promise<StructuredPointerDecision> {
   const host = getStructuredAgentSessionHost()
   if (!host) {
@@ -46,9 +44,8 @@ export async function awaitChatTakesTurn(
       const edge = new Promise<void>((resolve) => {
         wake = resolve
       })
-      const ownSends = db.listStructuredPointerOperationIds(sessionId)
       const decision = decideStructuredSessionPointerDelivery({
-        session: await readStructuredSessionGateFacts(sessionId, (id) => ownSends.has(id))
+        session: await readStructuredSessionGateFacts(sessionId)
       })
       const remaining = deadline - Date.now()
       if (decision.deliver || remaining <= 0) {

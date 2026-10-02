@@ -691,6 +691,49 @@ describe('worker-start --terminal orca_session_id:<chat>', () => {
     expect(turns[0]!.text).toMatch(/orchestration message/)
   })
 
+  it("is held by orchestration's own send in its echo window too, as by the user's", async () => {
+    const { runId } = await coordinatorTask()
+    // A peer's mail pointer is admitted; the provider has not echoed it yet.
+    heldSends = []
+    await as(SESSION_Y, 'orchestration.send', { to: ADDRESS_Z, subject: 'heads up', run: runId })
+    await vi.waitFor(() => expect(heldSends).toHaveLength(1))
+    recordSubmission(SESSION_Z, starts[0]!.operationId, 'pending')
+    heldSends = null
+
+    const receipt = resultOf((await startOnChat(ADDRESS_Z, 300)).response)
+    expect(receipt).toMatchObject({
+      state: 'failed',
+      lastError: 'Agent did not become ready (running).'
+    })
+    expect(starts).toHaveLength(1)
+  })
+
+  it('says a preamble the chat could not take yet is owed and was not sent', async () => {
+    // The chat turns busy right as it is attached, so the lane holds the preamble back.
+    const attach = h.db.prepareStartingWorkerAuthority.bind(h.db)
+    vi.spyOn(h.db, 'prepareStartingWorkerAuthority').mockImplementation((params) => {
+      busy.add(SESSION_Z)
+      return attach(params)
+    })
+    const receipt = resultOf((await startOnChat(ADDRESS_Z, 5_000)).response)
+    expect(receipt).toMatchObject({
+      state: 'outcome_unknown',
+      lastError: expect.stringContaining('owed to the chat as its next turn; it was not sent')
+    })
+    expect(turns).toEqual([])
+  })
+
+  it('says a preamble the provider refused was offered and not taken', async () => {
+    providerDies.add(SESSION_Z)
+    const receipt = resultOf((await startOnChat(ADDRESS_Z, 5_000)).response)
+    expect(receipt).toMatchObject({
+      state: 'outcome_unknown',
+      lastError: expect.stringContaining(
+        "offered to the chat as a turn, and the chat's provider did not take it"
+      )
+    })
+  })
+
   it('re-reads the chat only on a status change that could let it take the turn', async () => {
     busy.add(SESSION_Z)
     const starting = startOnChat(ADDRESS_Z, 5_000)

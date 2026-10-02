@@ -449,6 +449,36 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     expect(codex.connections.length).toBe(before)
   })
 
+  it("does not hold mail behind the user's own send a refused turn/start left in doubt", async () => {
+    const chat = await openChat(COORDINATOR)
+    const { taskId } = await coordinatorRunAndTask()
+    providerFaults.refuseTurnStarts = 1
+    await sendUserMessage(COORDINATOR, 'user question')
+    await vi.waitFor(() => expect(providerFaults.turnStarts).toBe(1), WAIT)
+
+    await finishWorker(taskId)
+    await vi.waitFor(() => expect(chat.turns).toHaveLength(1), WAIT)
+  })
+
+  it('keeps pointing after two of its own sends were left in doubt', async () => {
+    const chat = await openChat(COORDINATOR)
+    const { taskId } = await coordinatorRunAndTask()
+    const more = async () =>
+      idOf(
+        (await call('orchestration.taskCreate', { spec: 'more' }, { sessionId: COORDINATOR })).task
+      )
+    const [second, third] = [await more(), await more()]
+    providerFaults.refuseTurnStarts = 2
+    await finishWorker(taskId)
+    await vi.waitFor(() => expect(providerFaults.turnStarts).toBe(1), WAIT)
+    await finishWorker(second, { handle: 'term_worker_2', paneKey: WORKER_2_PANE })
+    await vi.waitFor(() => expect(providerFaults.turnStarts).toBe(2), WAIT)
+
+    await finishWorker(third, { handle: 'term_worker_3', paneKey: 'tab_worker3:pane' })
+    await vi.waitFor(() => expect(chat.turns).toHaveLength(1), WAIT)
+    expect(providerFaults.turnStarts).toBe(3)
+  })
+
   it('points a coordinator whose agent is not running through the send alone, which starts it', async () => {
     await openChat(COORDINATOR)
     const { taskId } = await coordinatorRunAndTask()

@@ -45,36 +45,18 @@ export function structuredSessionPointerCallerKey(sessionId: string): string {
  * group addressing cannot disagree about it.
  */
 export async function readStructuredSessionGateFacts(
-  sessionId: string,
-  isOrchestrationSend?: (clientMessageId: string) => boolean
+  sessionId: string
 ): Promise<StructuredSessionGateFacts | null> {
   const snapshot = await readSessionJournal(sessionId)
-  return snapshot ? gateFactsOf(sessionId, snapshot, isOrchestrationSend) : null
-}
-
-function gateFactsOf(
-  sessionId: string,
-  snapshot: AgentJournalSnapshot,
-  isOrchestrationSend?: (clientMessageId: string) => boolean
-): StructuredSessionGateFacts {
-  const fence = getStructuredAgentSessionHost()?.deps.store.getRecord(sessionId)?.lease.runtimeFence
-  return structuredSessionGateFacts(
-    snapshot.items,
-    snapshot.submissions,
-    fence,
-    isOrchestrationSend
-  )
+  return snapshot ? structuredSessionGateFacts(snapshot.items, snapshot.submissions) : null
 }
 
 /** The pointer lane's gate: the shared idle facts, plus what each recorded send settled as. */
-async function readPointerGateFacts(
-  sessionId: string,
-  isOrchestrationSend: (clientMessageId: string) => boolean
-): Promise<StructuredPointerGateFacts | null> {
+async function readPointerGateFacts(sessionId: string): Promise<StructuredPointerGateFacts | null> {
   const snapshot = await readSessionJournal(sessionId)
   return snapshot
     ? {
-        ...gateFactsOf(sessionId, snapshot, isOrchestrationSend),
+        ...structuredSessionGateFacts(snapshot.items, snapshot.submissions),
         submissions: snapshot.submissions
       }
     : null
@@ -99,8 +81,8 @@ async function readSessionJournal(sessionId: string): Promise<AgentJournalSnapsh
 
 export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHost {
   return {
-    readGateFacts(sessionId, isOrchestrationSend) {
-      return readPointerGateFacts(sessionId, isOrchestrationSend)
+    readGateFacts(sessionId) {
+      return readPointerGateFacts(sessionId)
     },
 
     currentFence(sessionId) {

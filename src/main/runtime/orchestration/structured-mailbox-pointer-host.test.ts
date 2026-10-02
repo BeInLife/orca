@@ -46,12 +46,9 @@ describe('structured mailbox pointer host', () => {
     // it -- either way folded into work already in flight rather than read as a new instruction.
     const items = [runningTurn(), ...transcript(500)]
     const submissions = [{ clientMessageId: 'op1', dispatchState: 'unknown' }]
-    hostRef.current = {
-      journalSnapshot: () => ({ items, submissions }),
-      deps: { store: { getRecord: () => null } }
-    }
+    hostRef.current = { journalSnapshot: () => ({ items, submissions }) }
     // The recorded sends ride along: the lane reads what its own operation id settled as.
-    expect(await createStructuredMailboxPointerHost().readGateFacts('s1', () => false)).toEqual({
+    expect(await createStructuredMailboxPointerHost().readGateFacts('s1')).toEqual({
       turnRunning: true,
       awaitingHuman: false,
       submissions
@@ -61,13 +58,13 @@ describe('structured mailbox pointer host', () => {
   it('answers null rather than idle when the session cannot be read', async () => {
     // Null retains the pointer; `{turnRunning:false}` would deliver a nudge into a session this
     // runtime cannot see at all.
-    expect(await createStructuredMailboxPointerHost().readGateFacts('s1', () => false)).toBeNull()
+    expect(await createStructuredMailboxPointerHost().readGateFacts('s1')).toBeNull()
     hostRef.current = {
       journalSnapshot: () => {
         throw new Error('agent_session_ownership_unknown')
       }
     }
-    expect(await createStructuredMailboxPointerHost().readGateFacts('s1', () => false)).toBeNull()
+    expect(await createStructuredMailboxPointerHost().readGateFacts('s1')).toBeNull()
   })
 
   it('reports an unattached host rather than a rejection when nothing can be sent', async () => {
