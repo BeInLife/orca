@@ -199,7 +199,14 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
     requestedAt?: number
     beforeDispatch?: () => Promise<void>
   }): Promise<AgentSessionDispatchOutcome> {
-    const session = this.session(input.sessionId)
+    const session = this.sessions.get(input.sessionId)
+    // A closed connection writes nothing, so a message for it was never sent: rejected, not doubt.
+    if (!session || session.ended || session.connection.closed) {
+      return {
+        state: 'rejected',
+        ...codexDispatchRejection(agentSessionFailureFact('providerExited'))
+      }
+    }
     session.dispatchPending = true
     try {
       await input.beforeDispatch?.()

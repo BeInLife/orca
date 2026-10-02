@@ -150,6 +150,9 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   const owed = owedStop(session, cause, ending.retry === true)
   session.owesProviderChildWindDown = owed
   const stopping = session.child
+  // A step past its deadline still runs; proving the exit after this pass gave up, it is news
+  // nothing else will deliver.
+  let gaveUp = false
   const eviction: StructuredAgentSessionEvictionContext = {
     sessionId,
     // The retry must not re-stop a child the adapter already proved gone, so this stays honest.
@@ -163,7 +166,8 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       : {}),
     // Host state must not disagree with the adapter for the steps in between.
     onProviderChildStopped: (verdict) => {
-      if (stopping) {
+      const ended =
+        stopping !== null &&
         endProviderChild(session, {
           generation: stopping.generation,
           fence: stopping.fence,
@@ -174,6 +178,12 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
           ...(owed ? { endedAt: owed.requestedAt } : {}),
           ...verdict
         })
+      const late = session.owesProviderChildWindDown
+      if (ended && gaveUp && late) {
+        // What waited through the failed passes waited on this exit: it retries the rest now.
+        const { generation, fence, cause: lateCause, requestedAt } = late
+        session.owesProviderChildWindDown = { generation, fence, cause: lateCause, requestedAt }
+        context.wakeDelivery?.(sessionId)
       }
       context.restartWitness?.stopped(sessionId)
     },
@@ -229,6 +239,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       withStructuredAgentSessionEvictionDeadline(STRUCTURED_AGENT_SESSION_EVICTION_STEPS)
     )
   } catch (error) {
+    gaveUp = true
     if (session.owesProviderChildWindDown === owed && owed) {
       session.owesProviderChildWindDown = { ...owed, failedAt: session.journal.cursor() }
     }

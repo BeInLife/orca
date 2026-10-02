@@ -31,6 +31,7 @@ import { claudeStoppedRequestEndWait } from './claude-request-end-wait'
 import {
   drainClaudeObservedExits,
   observeClaudeSessionExit,
+  rejectClaudeDetachedDispatch,
   settleClaudeUnexpectedExit,
   type ClaudeExitLifecycle
 } from './claude-structured-session-exit-lifecycle'
@@ -178,8 +179,12 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     this.sessions.get(sessionId)?.prompts.bindJournalItemId(journalItemId, promptKey)
   }
 
-  dispatch: StructuredAgentSessionAdapter['dispatch'] = (input) =>
-    dispatchClaudeTurn(this.session(input.sessionId), input, input.beforeDispatch)
+  dispatch: StructuredAgentSessionAdapter['dispatch'] = async (input) => {
+    const session = this.sessions.get(input.sessionId)
+    return session
+      ? dispatchClaudeTurn(session, input, input.beforeDispatch)
+      : rejectClaudeDetachedDispatch(this.exitLifecycle, input.sessionId)
+  }
 
   compact: NonNullable<StructuredAgentSessionAdapter['compact']> = (input) =>
     dispatchClaudeCommand(this.session(input.sessionId), input.command)

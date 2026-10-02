@@ -187,7 +187,8 @@ describe('CodexStructuredSessionAdapter lifecycle', () => {
         body: USER_MESSAGE,
         fence: 7
       })
-    ).rejects.toThrow('no live codex app-server')
+      // Never written to a child it no longer serves: rejected, never left in doubt.
+    ).resolves.toMatchObject({ state: 'rejected', rejection: { kind: 'providerExited' } })
     expect(await adapter.historyFilePath({ identity: identityFor('session-1') })).toBe(
       '/rollouts/abc.jsonl'
     )
