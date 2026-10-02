@@ -128,12 +128,16 @@ function installTerminal(): void {
     status: 'live',
     ptyIds: ['pty_worker']
   })
-  vi.spyOn(h.runtime, 'waitForTerminal').mockResolvedValue({
-    handle: WORKER_HANDLE,
-    condition: 'tui-idle',
-    satisfied: true,
-    status: 'running',
-    exitCode: null
+  // A busy terminal agent goes idle only when its running turn ends.
+  vi.spyOn(h.runtime, 'waitForTerminal').mockImplementation(async () => {
+    await readiness
+    return {
+      handle: WORKER_HANDLE,
+      condition: 'tui-idle',
+      satisfied: true,
+      status: 'running',
+      exitCode: null
+    }
   })
   // The preamble is typed and queued behind the agent's running turn, which starts it on release.
   const prompt = {
@@ -244,10 +248,16 @@ async function runScript(kind: Kind): Promise<Row> {
     expect(id).toBeDefined()
     return String(id)
   })
-  seen.showWhileStarting = await call(SESSION_X, 'orchestration.workerShow', {
+  // While the agent is busy, the start is still `starting` and the worker has nothing to read. The
+  // rest of the start window differs by design: a busy terminal is attached after it goes idle,
+  // while a chat is attached first, because its readiness is taking the preamble the lane sends.
+  const shownWhileStarting = await call(SESSION_X, 'orchestration.workerShow', {
     dispatch: dispatchId
   })
-  seen.checkBeforeTask = await asWorker(kind, 'orchestration.check', {})
+  seen.workerWhileStarting = isRecord(shownWhileStarting.worker)
+    ? shownWhileStarting.worker.state
+    : undefined
+  seen.mailBeforeTask = (await asWorker(kind, 'orchestration.check', {})).messages
 
   assigneeBusy = false
   releaseTerminal()

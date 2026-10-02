@@ -25,7 +25,8 @@ export type WorkerPreambleDelivery = {
   prompt?: RuntimeTerminalSend['prompt']
   /** A structured worker's preamble send is its own evidence: acknowledged, or still held. */
   structuredTurnStart?: WorkerTurnStartObservation
-  preambleTurnMessageId?: string
+  /** A chat is owed the preamble as its next turn (see `dispatch-preamble-turn.ts`). */
+  chatPreambleTurn?: true
 }
 
 /**
@@ -49,7 +50,6 @@ export async function deliverWorkerDispatchPreamble(args: {
   coordinatorHandle: string
   devMode: boolean | undefined
   requestId: string
-  runId: string
 }): Promise<WorkerPreambleDelivery> {
   const { runtime, structuredSession, terminalHandle } = args
   const preamble = buildDispatchPreamble({
@@ -90,13 +90,8 @@ export async function deliverWorkerDispatchPreamble(args: {
     }
   }
   if (parseOrcaSessionAddress(terminalHandle)) {
-    const preambleTurnMessageId = queueDispatchPreambleTurn(runtime, args.db, {
-      dispatchId: args.dispatchId,
-      runId: args.runId,
-      from: args.coordinatorHandle,
-      preamble
-    })
-    return { preambleTurnMessageId }
+    queueDispatchPreambleTurn(runtime, args.db, args.dispatchId, preamble)
+    return { chatPreambleTurn: true }
   }
   const sent = await runtime.sendTerminalAgentPrompt(
     terminalHandle,

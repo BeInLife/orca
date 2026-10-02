@@ -44,11 +44,6 @@ const MAIN_KERNEL_LINES = 198 + 1
 
 const db = new OrchestrationDb(':memory:')
 const SELF_LINE = `\nYour Orca session ID is: ${CHAT_ADDRESS}`
-const RUN_ID = db.createRun({
-  objective: 'parity',
-  coordinatorHandle: 'term_coord',
-  coordinatorPaneKey: 'tab:11111111-1111-4111-8111-111111111111'
-}).id
 const previousEnvironment = hasAppEnvironment() ? getAppEnvironment() : null
 
 afterEach(() => {
@@ -121,11 +116,10 @@ async function renderPreamble(worker: 'chat' | 'chat assignee' | 'terminal'): Pr
     taskSpec: 'do it',
     coordinatorHandle: 'term_coord',
     devMode: false,
-    requestId: 'req_1',
-    runId: RUN_ID
+    requestId: 'req_1'
   })
-  if (delivery.preambleTurnMessageId) {
-    return db.getMessageById(delivery.preambleTurnMessageId)!.body
+  if (delivery.chatPreambleTurn) {
+    return db.getDispatchPreambleTurn('ctx_1')!.body
   }
   return worker === 'chat' ? sent.preambles[0]! : prompts[0]!
 }

@@ -167,12 +167,7 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
       let prompt
       if (params.inject && chatAssignee) {
         // Owed as a turn the chat's mail lane delivers once it can take one, as a busy PTY queues it.
-        queueDispatchPreambleTurn(runtime, db, {
-          dispatchId: ctx.id,
-          runId: ctx.run_id,
-          from: params.from ?? 'coordinator',
-          preamble
-        })
+        queueDispatchPreambleTurn(runtime, db, ctx.id, preamble)
         injected = true
       } else if (params.inject) {
         try {

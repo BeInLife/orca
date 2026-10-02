@@ -8,7 +8,6 @@ import type { AgentJournalMessageItem } from '../../../shared/agent-session-jour
 import { formatOrcaSessionAddress } from '../../../shared/orca-session-address'
 import { testOrcaSessionId } from '../../../shared/orca-session-address-test-fixture'
 import { OrcaRuntimeService } from '../orca-runtime'
-import { dispatchPreambleMessageId } from '../orchestration/dispatch-preamble-identity'
 import { localOrchestrationCliCommand } from '../orchestration/cli-command'
 import type { FleetAgentStatusEvidence } from '../../../shared/orchestration-fleet-agent-status-evidence'
 import {
@@ -59,6 +58,8 @@ let closed: string[]
 let closedTabs: Set<string>
 /** Every journal the host opened for a snapshot. */
 let journalReads: string[]
+/** Set to hold every provider send until it is released with its verdict. */
+let heldSends: ((state: 'accepted' | 'pending') => void)[] | null
 
 function recordSubmission(sessionId: string, clientMessageId: string, dispatchState: string): void {
   const recorded = submissions.get(sessionId) ?? []
@@ -77,6 +78,7 @@ function installChatHost(): void {
   closed = []
   closedTabs = new Set()
   journalReads = []
+  heldSends = null
   hostRef.current = {
     deps: {
       store: {
@@ -92,6 +94,7 @@ function installChatHost(): void {
     close: async (id: string) => {
       closed.push(id)
     },
+    waitForSendSettlement: async () => ({ ok: false }),
     journalSnapshot: async (id: string) => {
       journalReads.push(id)
       return {
@@ -148,6 +151,16 @@ function installChatHost(): void {
         }
       }
       starts.push({ sessionId, operationId })
+      if (heldSends) {
+        const held = heldSends
+        const released = await new Promise<'accepted' | 'pending'>((resolve) => held.push(resolve))
+        if (released === 'pending') {
+          return {
+            ok: true,
+            value: { clientMessageId: operationId, submission: { dispatchState: 'pending' } }
+          }
+        }
+      }
       const dispatchState = providerDies.has(sessionId) ? 'rejected' : 'accepted'
       ledger.set(operationId, dispatchState)
       recordSubmission(sessionId, operationId, dispatchState)
@@ -244,10 +257,14 @@ describe('dispatch --inject to a chat', () => {
     await vi.waitFor(() => expect(turns).toEqual([{ sessionId: SESSION_Z, text: preamble }]))
     // The same CLI its mail pointers name: this runtime's own, `orca-dev` in a dev build.
     expect(preamble).toContain(`${localOrchestrationCliCommand()} orchestration send --from`)
-    // The turn is the preamble's reading: `check` never replays it.
     await vi.waitFor(() =>
-      expect(h.db.getMessageById(dispatchPreambleMessageId(dispatchId))?.read).toBe(1)
+      expect(h.db.getDispatchPreambleTurn(dispatchId)?.state).toBe('delivered')
     )
+    // It is the chat's turn, never mail: no mail reader or count sees it.
+    expect(JSON.stringify(h.db.getInbox(100))).not.toContain('You are a dispatched worker')
+    expect(h.db.getAllMessagesForHandle(`dispatch:${dispatchId}`, 100)).toEqual([])
+    const attention = h.db.getWorkerAttentionFactsForDispatches([dispatchId], Date.now())
+    expect(attention.get(dispatchId)?.pendingGuidance ?? false).toBe(false)
   })
 
   it('holds the preamble while the chat is mid-turn, and sends it at its idle edge', async () => {
@@ -275,14 +292,14 @@ describe('dispatch --inject to a chat', () => {
     // Every retry replays its recorded id, which starts nothing: no respawn loop.
     expect(starts).toHaveLength(1)
     expect(turns).toEqual([])
-    expect(h.db.getMessageById(dispatchPreambleMessageId(dispatchId))?.read).toBe(0)
+    expect(h.db.getDispatchPreambleTurn(dispatchId)?.state).toBe('owed')
 
     // The person's next message runs, which proves the agent can run: the preamble goes, once.
     providerDies.delete(SESSION_Z)
     recordSubmission(SESSION_Z, 'person-turn', 'accepted')
     h.runtime.onStructuredSessionStatusForMail({ sessionId: SESSION_Z, status: 'idle' })
     await vi.waitFor(() =>
-      expect(h.db.getMessageById(dispatchPreambleMessageId(dispatchId))?.read).toBe(1)
+      expect(h.db.getDispatchPreambleTurn(dispatchId)?.state).toBe('delivered')
     )
     expect(turns.filter((turn) => turn.text === preamble)).toEqual([
       { sessionId: SESSION_Z, text: preamble }
@@ -395,7 +412,13 @@ describe('dispatch --inject to a chat', () => {
   it('never delivers the preamble of a Dispatch stopped before the chat could take it', async () => {
     busy.add(SESSION_Z)
     const { dispatchId } = await injectToChat()
+    expect(h.db.getOwedDispatchPreambleMailboxes()).toEqual([`dispatch:${dispatchId}`])
     await as(SESSION_X, 'orchestration.workerStop', { dispatch: dispatchId })
+    // Bookkeeping: the turn is dropped with its Dispatch, and startup finds nothing owed.
+    expect(h.db.getDispatchPreambleTurn(dispatchId)).toBeUndefined()
+    // A row that outlived its Dispatch (an older Orca settled it) is still never sent.
+    h.db.putDispatchPreambleTurn(dispatchId, 'You are a dispatched worker.')
+    expect(h.db.getOwedDispatchPreambleMailboxes()).toEqual([])
 
     busy.delete(SESSION_Z)
     h.runtime.onStructuredSessionStatusForMail({ sessionId: SESSION_Z, status: 'idle' })
@@ -508,7 +531,7 @@ describe('the chat runs the worker lifecycle as its own session', () => {
 })
 
 describe('worker-start --terminal orca_session_id:<chat>', () => {
-  async function startOnChat(terminal = ADDRESS_Z) {
+  async function startOnChat(terminal = ADDRESS_Z, timeoutMs?: number) {
     const { runId, taskId } = await coordinatorTask()
     vi.spyOn(h.runtime, 'showManagedTerminalWorkspace').mockResolvedValue(
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: placement reads only the id of an existing workspace.
@@ -519,7 +542,8 @@ describe('worker-start --terminal orca_session_id:<chat>', () => {
     const response = await call(SESSION_X, 'orchestration.workerStart', {
       task: taskId,
       terminal,
-      run: runId
+      run: runId,
+      ...(timeoutMs === undefined ? {} : { timeoutMs })
     })
     return { runId, taskId, response }
   }
@@ -547,6 +571,68 @@ describe('worker-start --terminal orca_session_id:<chat>', () => {
     expect(stopped).toMatchObject({ processAction: 'none' })
     expect(closed).toEqual([])
     void taskId
+  })
+
+  it('waits out a busy chat within --timeout-ms, then reports it ready', async () => {
+    busy.add(SESSION_Z)
+    const starting = startOnChat(ADDRESS_Z, 5_000)
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(turns).toEqual([])
+
+    busy.delete(SESSION_Z)
+    h.runtime.onStructuredSessionStatusForMail({ sessionId: SESSION_Z, status: 'idle' })
+    const receipt = resultOf((await starting).response)
+    expect(receipt).toMatchObject({ state: 'ready', turnStart: 'observed' })
+    expect(turns).toHaveLength(1)
+  })
+
+  it('fails a chat still busy past --timeout-ms as a busy terminal fails, delivering nothing', async () => {
+    busy.add(SESSION_Z)
+    const receipt = resultOf((await startOnChat(ADDRESS_Z, 300)).response)
+    const dispatchId = String(receipt.dispatchId)
+    expect(receipt).toMatchObject({
+      state: 'failed',
+      failedStage: 'agent_readiness',
+      lastError: 'Agent did not become ready (running).'
+    })
+    expect(h.db.getDispatchContextById(dispatchId)?.status).toBe('failed')
+    expect(h.db.getDispatchPreambleTurn(dispatchId)).toBeUndefined()
+
+    busy.delete(SESSION_Z)
+    h.runtime.onStructuredSessionStatusForMail({ sessionId: SESSION_Z, status: 'idle' })
+    h.runtime.deliverPendingMessagesForHandle(`dispatch:${dispatchId}`)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(turns).toEqual([])
+  })
+
+  it('waits out a send in flight at the deadline, and reports the turn it became', async () => {
+    heldSends = []
+    const starting = startOnChat(ADDRESS_Z, 300)
+    await vi.waitFor(() => expect(heldSends).toHaveLength(1))
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    heldSends[0]!('accepted')
+    const receipt = resultOf((await starting).response)
+    expect(receipt).toMatchObject({ state: 'ready', turnStart: 'observed' })
+  })
+
+  it('reports a send whose outcome is unknown at the deadline as in doubt, never failed', async () => {
+    heldSends = []
+    const starting = startOnChat(ADDRESS_Z, 300)
+    await vi.waitFor(() => expect(heldSends).toHaveLength(1))
+    heldSends[0]!('pending')
+    const receipt = resultOf((await starting).response)
+    const dispatchId = String(receipt.dispatchId)
+    expect(receipt).toMatchObject({
+      state: 'outcome_unknown',
+      turnStart: 'unobserved',
+      lastError: expect.stringContaining('whether the chat took it could not be confirmed'),
+      nextCommands: [
+        `orca orchestration worker-show --dispatch ${dispatchId} --json`,
+        `orca orchestration worker-abandon --dispatch ${dispatchId} --json`
+      ]
+    })
+    // Still active: the chat may be doing the task, and its report settles it.
+    expect(h.db.getDispatchContextById(dispatchId)?.status).toBe('pending')
   })
 
   it('is live in worker-list, by the same observation worker-show reports', async () => {

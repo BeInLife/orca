@@ -325,10 +325,12 @@ export class OrcaRuntimeWithGetPtyRecordForPaneKey extends OrcaRuntimeWithPruneM
     let handles: Set<string>
     try {
       const db = this._orchestrationDb
-      // Pointer-phase rows are excluded from the undelivered scan, so they need their own.
+      // Pointer-phase rows are excluded from the undelivered scan, so they need their own, and so
+      // does a chat's owed preamble, which is not mail.
       handles = new Set([
         ...(db?.getUndeliveredUnreadMailboxHandles?.() ?? []),
-        ...(db?.getPendingMailboxPointerHandles?.() ?? [])
+        ...(db?.getPendingMailboxPointerHandles?.() ?? []),
+        ...(db?.getOwedDispatchPreambleMailboxes?.() ?? [])
       ])
     } catch (error) {
       console.warn('[orchestration] failed to scan restored mailboxes', error)

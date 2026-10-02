@@ -3,8 +3,11 @@ import type { OrchestrationDb } from '../../../../orchestration/db'
 import type { RunRow, TaskRow } from '../../../../orchestration/types'
 import type { WorkerStartModeReceipt } from '../../orchestration-worker-start-mode'
 import { deliverWorkerDispatchPreamble } from './deliver-worker-dispatch-preamble'
-import { waitForDispatchPreambleTurn } from '../../../../orchestration/dispatch-preamble-turn'
-import { AGENT_PROMPT_EFFECT_TIMEOUT_MS } from '../../../../../../shared/orchestration-timing-budgets'
+import {
+  settleDispatchPreambleTurn,
+  type DispatchPreambleTurnSettlement
+} from '../../../../orchestration/dispatch-preamble-turn'
+import { isStructuredSessionAddress } from '../../../../structured-worker-identity'
 import type { OrchestrationWorkerLaunchReceipt } from './worker-launch-preferences'
 import {
   describeUnobservedWorkerTurnStart,
@@ -17,6 +20,10 @@ import {
   type WorkerEffect,
   type WorkerSetupReceipt
 } from './worker-topology'
+
+const CHAT_PREAMBLE_IN_DOUBT =
+  'The dispatch preamble was sent to the chat as its next turn, but whether the chat took it could ' +
+  'not be confirmed. If the worker reports, this Dispatch settles normally.'
 
 /**
  * Delivers the dispatch preamble and settles the worker's start state on the strongest
@@ -43,7 +50,7 @@ export async function deliverAndSettleWorkerStartReadiness(args: {
   effects: WorkerEffect[]
   terminalRevealWarning: string | undefined
   /** Keeps the caller's failure receipt naming the stage that actually failed. */
-  onStage: (stage: 'dispatch_input' | 'turn_observation') => void
+  onStage: (stage: 'agent_readiness' | 'dispatch_input' | 'turn_observation') => void
 }): Promise<unknown> {
   const { runtime, db, run, task, structuredSession, terminalHandle, effects } = args
 
@@ -59,10 +66,19 @@ export async function deliverAndSettleWorkerStartReadiness(args: {
     taskSpec: task.spec,
     coordinatorHandle: args.coordinatorHandle,
     devMode: args.devMode,
-    requestId: args.requestId,
-    runId: run.id
+    requestId: args.requestId
   })
   const promptDelivery = delivery.prompt
+  // A chat takes the preamble when its turn ends, which is its readiness: past the budget a busy
+  // terminal gets to go idle, the start fails as that terminal's does, with nothing delivered.
+  let chatTurn: DispatchPreambleTurnSettlement | undefined
+  if (delivery.chatPreambleTurn) {
+    args.onStage('agent_readiness')
+    chatTurn = await settleDispatchPreambleTurn(db, args.dispatchId, args.timeoutMs)
+    if (chatTurn === 'withdrawn') {
+      throw new Error('Agent did not become ready (running).')
+    }
+  }
   effects.push({
     kind: 'dispatch_input',
     role: 'agent',
@@ -75,19 +91,13 @@ export async function deliverAndSettleWorkerStartReadiness(args: {
   // evidence the receipt claims is observable. A worker whose turn never starts must not be
   // reported ready — a wedged agent and a working one looked identical before this gate.
   // A structured preamble send is its own evidence: acknowledged, or still held for its agent.
-  // A chat's preamble turn starts once its provider accepts it, which a busy chat defers.
+  // A chat's preamble turn started once its provider accepted it.
   const turnStart: WorkerTurnStartObservation =
     delivery.structuredTurnStart ??
-    (delivery.preambleTurnMessageId
-      ? {
-          verdict: (await waitForDispatchPreambleTurn(
-            db,
-            delivery.preambleTurnMessageId,
-            AGENT_PROMPT_EFFECT_TIMEOUT_MS
-          ))
-            ? 'observed'
-            : 'unobserved'
-        }
+    (chatTurn
+      ? chatTurn === 'delivered'
+        ? { verdict: 'observed' }
+        : { verdict: 'unobserved', reason: CHAT_PREAMBLE_IN_DOUBT }
       : await observeWorkerTurnStart({ runtime, terminalHandle, prompt: promptDelivery }))
   const deliveredPrompt = turnStart.prompt ?? promptDelivery
   monitorWorkerSetup({
@@ -135,8 +145,10 @@ export async function deliverAndSettleWorkerStartReadiness(args: {
       residualResources: JSON.parse(worker.residual_resources) as unknown[],
       nextCommands: [
         `orca orchestration worker-show --dispatch ${args.dispatchId} --json`,
-        // A structured worker has no screen to read.
-        ...(structuredSession ? [] : [`orca terminal read --terminal ${terminalHandle} --screen`]),
+        // A structured session, a minted worker or a chat, has no screen to read.
+        ...(structuredSession || isStructuredSessionAddress(terminalHandle)
+          ? []
+          : [`orca terminal read --terminal ${terminalHandle} --screen`]),
         `orca orchestration worker-abandon --dispatch ${args.dispatchId} --json`
       ],
       ...(args.terminalRevealWarning ? { warning: args.terminalRevealWarning } : {})

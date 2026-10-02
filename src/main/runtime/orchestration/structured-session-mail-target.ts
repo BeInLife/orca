@@ -92,7 +92,7 @@ export function structuredSessionAddressTarget(
 
 /**
  * Every mailbox a session reads for itself: the Runs it coordinates, the Dispatches it holds as a
- * chat assignee (the first of which carries its owed preamble), and its own direct mail.
+ * chat assignee (each sends its owed preamble turn before its mail), and its own direct mail.
  * Re-derived from the database on each idle edge rather than remembered, so mail that arrived
  * while the session could not take it (mid-turn, closed) is found again.
  */
