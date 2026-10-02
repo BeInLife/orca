@@ -5,6 +5,7 @@ export const youtrackApi: YouTrackApi = {
   status: () => ipcRenderer.invoke('youtrack:status'),
   connect: (args) => ipcRenderer.invoke('youtrack:connect', args),
   disconnect: () => ipcRenderer.invoke('youtrack:disconnect'),
+  testConnection: () => ipcRenderer.invoke('youtrack:testConnection'),
   listIssues: (args) => ipcRenderer.invoke('youtrack:listIssues', args),
   getIssue: (args) => ipcRenderer.invoke('youtrack:getIssue', args),
   getComments: (args) => ipcRenderer.invoke('youtrack:getComments', args),

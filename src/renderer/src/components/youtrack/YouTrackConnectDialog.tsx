@@ -18,11 +18,14 @@ import { useYouTrackStore } from './youtrack-store'
 export function YouTrackConnectDialog({
   open,
   onOpenChange,
-  onConnected
+  onConnected,
+  aboveSettings = false
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onConnected?: () => void
+  /** Settings renders above the app shell; dialogs opened there must layer higher. */
+  aboveSettings?: boolean
 }): React.JSX.Element {
   const connect = useYouTrackStore((s) => s.connect)
   const savedBaseUrl = useYouTrackStore((s) => s.status.baseUrl)
@@ -77,7 +80,10 @@ export function YouTrackConnectDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        overlayClassName={aboveSettings ? 'z-[110]' : undefined}
+        className={aboveSettings ? 'z-[120] sm:max-w-md' : 'sm:max-w-md'}
+      >
         <DialogHeader>
           <DialogTitle>{translate('youtrack.connect.title', 'Connect YouTrack')}</DialogTitle>
           <DialogDescription>

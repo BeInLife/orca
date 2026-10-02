@@ -157,6 +157,14 @@ export const getIntegrationsPaneSearchEntries = createLocalizedCatalog(() => [
     ]
   },
   {
+    title: translate('youtrack.search.title', 'YouTrack Integration'),
+    description: translate(
+      'youtrack.search.description',
+      'Connect self-hosted YouTrack or update its permanent token.'
+    ),
+    keywords: ['youtrack', 'jetbrains', 'integration', 'permanent token', 'certificate', 'tasks']
+  },
+  {
     title: translate('auto.components.settings.integrations.search.617603509b', 'Jira Integration'),
     description: translate(
       'auto.components.settings.integrations.search.76f6af7c57',
