@@ -19,6 +19,8 @@ import {
   updateField
 } from '../youtrack/issue-mutations'
 import { isRawRecord } from '../youtrack/issue-mapping'
+import { setYouTrackNetworkProxySettingsResolver } from '../youtrack/insecure-tls-session'
+import type { NetworkProxySettings } from '../../shared/network-proxy'
 import type {
   YouTrackFieldInput,
   YouTrackIssuePreset,
@@ -69,7 +71,10 @@ function readStateOption(value: unknown): YouTrackStateOption | null {
 const invalidIssue = { ok: false, error: 'A valid YouTrack issue id is required.' } as const
 
 /** Registers every `youtrack:*` IPC handler on the main process. */
-export function registerYouTrackHandlers(): void {
+export function registerYouTrackHandlers(
+  resolveNetworkProxySettings: () => NetworkProxySettings
+): void {
+  setYouTrackNetworkProxySettingsResolver(resolveNetworkProxySettings)
   ipcMain.handle('youtrack:status', () => getStatus())
 
   ipcMain.handle('youtrack:testConnection', () => testConnection())
