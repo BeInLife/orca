@@ -10,6 +10,7 @@ import { useSmartWorkspaceFieldFocusControls } from './use-smart-workspace-field
 import { useSmartWorkspaceNameFieldActions } from './use-smart-workspace-name-field-actions'
 import { getSmartWorkspaceNameFieldCopy } from './smart-workspace-name-field-copy'
 import { useYouTrackStore } from '@/components/youtrack/youtrack-store'
+import { useYouTrackVisible } from '@/components/youtrack/use-youtrack-visible'
 
 export function useSmartWorkspaceNameFieldController(props: SmartWorkspaceNameFieldProps) {
   const search = useWorkItemSourceSearch({
@@ -78,10 +79,11 @@ export function useSmartWorkspaceNameFieldController(props: SmartWorkspaceNameFi
   }
   const actions = useSmartWorkspaceNameFieldActions(foundation, { ...search, activeEmojiShortcode })
   const youtrackConnected = useYouTrackStore((state) => state.status.connected)
+  const youtrackVisible = useYouTrackVisible()
   const copy = getSmartWorkspaceNameFieldCopy({
     ...search,
     disabledPlaceholder: props.disabledPlaceholder,
-    youtrackConnected
+    youtrackConnected: youtrackConnected && youtrackVisible
   })
   return {
     ...foundation,

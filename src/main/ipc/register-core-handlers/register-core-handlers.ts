@@ -204,7 +204,7 @@ export function registerCoreHandlers(
   registerLinearHandlers()
   registerJiraHandlers()
   registerJiraIssueSummaryGenerationHandlers(store, commitMessageAgentEnv)
-  registerYouTrackHandlers()
+  registerYouTrackHandlers(() => store.getSettings())
   registerBitbucketHandlers()
   registerFeedbackHandlers()
   if (crashReports) {

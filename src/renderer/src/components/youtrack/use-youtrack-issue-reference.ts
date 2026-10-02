@@ -5,6 +5,7 @@ import {
   parseYouTrackIssueReference
 } from '../../../../shared/youtrack-issue-reference'
 import { useYouTrackStore } from './youtrack-store'
+import { useYouTrackVisible } from './use-youtrack-visible'
 
 const LOOKUP_DEBOUNCE_MS = 250
 const ASSIGNED_CACHE_TTL_MS = 60_000
@@ -46,15 +47,17 @@ export function useYouTrackIssueSuggestions(value: string, enabled: boolean): Yo
   const checkStatus = useYouTrackStore((s) => s.checkStatus)
   const [resolved, setResolved] = useState<YouTrackIssue | null>(null)
   const [assigned, setAssigned] = useState<YouTrackIssue[]>([])
-  const active = enabled && connected
+  // Why: hiding YouTrack in Settings → Tasks must also stop it querying from Create worktree.
+  const visible = useYouTrackVisible()
+  const active = enabled && connected && visible
   const issueId = active ? parseYouTrackIssueReference(value, baseUrl) : null
   const prefix = active ? parseYouTrackIssueIdPrefix(value) : null
 
   useEffect(() => {
-    if (enabled && !statusChecked) {
+    if (enabled && visible && !statusChecked) {
       void checkStatus()
     }
-  }, [checkStatus, enabled, statusChecked])
+  }, [checkStatus, enabled, statusChecked, visible])
 
   useEffect(() => {
     if (!prefix) {
