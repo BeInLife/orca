@@ -41,7 +41,7 @@ export function useSmartWorkspaceNameFieldPresentation(
 ) {
   const {
     jiraSource,
-    youtrackIssue,
+    youtrackIssues,
     branches,
     mode,
     branchResultsSource,
@@ -144,7 +144,7 @@ export function useSmartWorkspaceNameFieldPresentation(
       mode,
       resultLimit: RESULT_LIMIT,
       value,
-      youtrackIssue
+      youtrackIssues
     })
   }, [
     branches,
@@ -166,7 +166,7 @@ export function useSmartWorkspaceNameFieldPresentation(
     mode,
     selectedRepo?.id,
     value,
-    youtrackIssue
+    youtrackIssues
   ])
   const { typedTextActionRow, searchResultRows } = useMemo(() => {
     const typedTextRow = rows.find(isTypedTextSourceRow) ?? null
