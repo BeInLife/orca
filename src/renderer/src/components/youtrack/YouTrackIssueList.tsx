@@ -16,19 +16,20 @@ export function YouTrackStatePill({
   if (!state?.name) {
     return null
   }
-  const background = state.color?.background
-  const foreground = state.color?.foreground
+  // Why both: YouTrack pairs them; a lone background under theme text is unreadable in dark mode.
+  const palette =
+    state.color?.background && state.color.foreground
+      ? { backgroundColor: state.color.background, color: state.color.foreground }
+      : undefined
   return (
     <span
       className={cn(
         'inline-flex max-w-[160px] shrink-0 items-center truncate rounded-full border border-border/50 px-2 py-0.5 text-[11px] font-medium',
-        !background && (state.isResolved ? 'text-muted-foreground' : 'text-foreground'),
+        !palette && (state.isResolved ? 'text-muted-foreground' : 'text-foreground'),
         className
       )}
       // Why: YouTrack state colors are user-configured per bundle, so they can't be tokens.
-      style={
-        background ? { backgroundColor: background, color: foreground ?? undefined } : undefined
-      }
+      style={palette}
     >
       {state.name}
     </span>

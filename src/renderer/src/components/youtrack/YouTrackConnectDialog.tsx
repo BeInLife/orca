@@ -15,6 +15,16 @@ import { Label } from '@/components/ui/label'
 import { translate } from '@/i18n/i18n'
 import { useYouTrackStore } from './youtrack-store'
 
+/** True for plain-HTTP addresses off this machine, where the token would cross the network unencrypted. */
+function sendsTokenInClearText(input: string): boolean {
+  try {
+    const url = new URL(input.trim())
+    return url.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+  } catch {
+    return false
+  }
+}
+
 export function YouTrackConnectDialog({
   open,
   onOpenChange,
@@ -112,6 +122,14 @@ export function YouTrackConnectDialog({
               autoFocus
               disabled={submitting}
             />
+            {sendsTokenInClearText(baseUrl) ? (
+              <p className="text-xs text-destructive">
+                {translate(
+                  'youtrack.connect.httpWarning',
+                  'This address uses http://, so your token would be sent unencrypted. Use https:// if your YouTrack supports it.'
+                )}
+              </p>
+            ) : null}
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor={tokenId}>
