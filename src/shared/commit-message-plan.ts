@@ -8,6 +8,7 @@ import {
 } from './commit-message-agent-spec'
 import { planCustomCommand, tokenizeCustomCommandTemplate } from './commit-message-prompt'
 import type { TuiAgent } from './tui-agent'
+import { mergeOpenCodeGenerationArgs } from './opencode-generation-command'
 
 // Why: planning is a pure transformation from "user request + prompt text"
 // into "spawn-ready binary + argv". Keeping it in shared lets both the local
@@ -37,6 +38,7 @@ export type CommitMessagePlan = {
   label: string
   /** Leading command assignments, applied on the execution host. */
   env?: Record<string, string>
+  outputFormat?: 'opencode-json'
 }
 
 export type CommitMessagePlanResult =
@@ -311,9 +313,16 @@ export function planCommitMessageGeneration(
     ok: true,
     plan: {
       binary: command.binary,
-      args: [...merged.prefixArgs, ...args],
+      args: mergeOpenCodeGenerationArgs(input.agentId, command.binary, merged.prefixArgs, args),
       stdinPayload: spec.promptDelivery === 'stdin' ? prompt : null,
       label: spec.label,
+      ...((input.agentId === 'opencode' || input.agentId === 'opencode2') &&
+      [...merged.prefixArgs, ...args].some(
+        (value, index, values) =>
+          value === '--format=json' || (value === '--format' && values[index + 1] === 'json')
+      )
+        ? { outputFormat: 'opencode-json' as const }
+        : {}),
       ...(command.env ? { env: command.env } : {})
     }
   }
