@@ -1,5 +1,10 @@
 export type { TerminalCreateOptions } from './runtime-terminal-contracts'
-export type { RuntimeTerminalCreate } from '../../shared/runtime-types'
+import type { RuntimeTerminalCreate as PublishedRuntimeTerminalCreate } from '../../shared/runtime-types'
+/** Host-internal: a published create never carries `startupPromptDeferred` (no RPC can pass a
+ *  startup prompt), so it stays off the wire type. */
+export type RuntimeTerminalCreate = PublishedRuntimeTerminalCreate & {
+  startupPromptDeferred?: true
+}
 export {
   createTerminalRevealWarning,
   ownerSurfacing,

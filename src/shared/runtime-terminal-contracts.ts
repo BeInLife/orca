@@ -338,10 +338,13 @@ export type RuntimeTerminalWaitBlockedReason =
 
 export type RuntimeTerminalWait = {
   handle: string
-  condition: RuntimeTerminalWaitCondition
+  /** `launch-prompt` reads how a host-owned launch prompt delivery ended; it never writes. */
+  condition: RuntimeTerminalWaitCondition | 'launch-prompt'
   satisfied: boolean
   status: RuntimeTerminalState
   exitCode: number | null
   exitCause?: TerminalExitCause
   blockedReason?: RuntimeTerminalWaitBlockedReason
+  /** Set only for `launch-prompt`, in `agent.launch`'s receipt vocabulary. */
+  launchPrompt?: { outcome: 'handed-to-terminal' | 'not-delivered' }
 }

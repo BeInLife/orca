@@ -1,6 +1,7 @@
 import { ipcRenderer } from 'electron'
 import type { ProjectExecutionRuntimeResolution } from '../../shared/project-execution-runtime'
 import type { StartupCommandDelivery } from '../../shared/codex-startup-delivery'
+import type { AgentSessionLaunchPromptDisposal } from '../../shared/agent-session-host-authority'
 import type { TerminalInputKind } from '../../shared/terminal-input-kind'
 import type {
   AgentProviderSessionMetadata,
@@ -77,7 +78,7 @@ export const ptySessionControlApi = {
   },
   writeAccepted: (id: string, data: string, inputKind: TerminalInputKind): Promise<boolean> =>
     ipcRenderer.invoke('pty:writeAccepted', { id, data, inputKind }),
-  deliverAgentLaunchPrompt: (id: string, text: string): Promise<boolean> =>
+  deliverAgentLaunchPrompt: (id: string, text: string): Promise<AgentSessionLaunchPromptDisposal> =>
     ipcRenderer.invoke('pty:deliverAgentLaunchPrompt', { id, text }),
   onWriteUnavailable: (callback: (payload: { id: string }) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: string }): void =>

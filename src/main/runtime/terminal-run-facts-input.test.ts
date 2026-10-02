@@ -9,8 +9,7 @@ import type { RuntimePtyController } from './runtime-pty-controller-contract'
 import { writeOrchestrationPointerWithSettlement } from './orchestration/mailbox-pointer-pty-write'
 import { sendTerminalStreamInput } from './rpc/methods/terminal/terminal-input-delivery'
 import { makeStore } from './runtime-rpc-worktree-store-fixtures'
-import { RpcDispatcher } from './rpc/dispatcher'
-import { TERMINAL_METHODS } from './rpc/methods/terminal'
+import { deliverTerminalAgentLaunchPrompt } from './rpc/methods/agent-launch-terminal-prompt'
 import {
   pasteWorktreeStartupDraftWhenReady,
   sendWorktreeStartupFollowupWhenReady,
@@ -149,7 +148,7 @@ describe('run facts: the controller write funnel', () => {
     expect(run.firstUserInputAt()).not.toBeNull()
   })
 
-  it('reads a deferred launch prompt sent over terminal.send as launch input, not typing', async () => {
+  it('reads a host-delivered launch prompt as launch input, not typing', async () => {
     vi.useFakeTimers()
     const run = await createFreshRun()
     vi.spyOn(run.runtime, 'waitForTerminal').mockResolvedValue({
@@ -160,16 +159,14 @@ describe('run facts: the controller write funnel', () => {
       exitCode: null
     })
     const sendTerminal = vi.spyOn(run.runtime, 'sendTerminal')
-    const dispatcher = new RpcDispatcher({ runtime: run.runtime, methods: TERMINAL_METHODS })
 
-    const response = dispatcher.dispatch({
-      id: 'request',
-      authToken: 'token',
-      method: 'terminal.send',
-      params: { terminal: run.handle, text: 'first line\nsecond line', launchPrompt: true }
+    const delivery = deliverTerminalAgentLaunchPrompt({
+      runtime: run.runtime,
+      handle: run.handle,
+      text: 'first line\nsecond line'
     })
     await vi.runAllTimersAsync()
-    await response
+    await expect(delivery).resolves.toBe(true)
 
     // `aider` is neither Claude nor Codex, whose plain sends go out raw with Enter in the same write.
     expect(sendTerminal).not.toHaveBeenCalled()

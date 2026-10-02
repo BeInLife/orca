@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createWebRuntimeAgentSessionTerminalWithPrompt } from './web-runtime-session'
+import {
+  createWebRuntimeAgentSessionTerminalWithLaunchDraft,
+  createWebRuntimeAgentSessionTerminalWithPrompt
+} from './web-runtime-session'
 import { resetWebSessionCloseIntentForTests } from './web-session-close-intent'
 import {
   ENVIRONMENT_ID,
@@ -9,7 +12,7 @@ import {
   resetTerminalCreateEnvironment,
   stubTerminalCreateEnvironment
 } from './web-runtime-session-test-harness'
-import { TERMINAL_QUICK_COMMAND_LONG_PROMPTS_RUNTIME_CAPABILITY } from '../../../shared/terminal-quick-command-capabilities'
+import { LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH } from '../../../shared/terminal-quick-commands'
 
 const mocks = vi.hoisted(() => ({
   getState: vi.fn(),
@@ -75,7 +78,14 @@ afterEach(() => resetWebSessionCloseIntentForTests())
 
 type RuntimeRequest = { method: string; params?: Record<string, unknown> }
 
-function stubHost(options: { capabilities: string[]; deferred: boolean; sendAccepted?: boolean }) {
+const HOST_AUTHORITY = 'agent-session.host-authority.v1'
+
+function stubHost(options: {
+  capabilities?: string[]
+  launchPrompt?: { outcome: string }
+  waitReplies?: (() => unknown)[]
+}) {
+  const waitReplies = [...(options.waitReplies ?? [])]
   const runtimeCall = vi.fn(async (request: RuntimeRequest) => {
     if (request.method === 'status.get') {
       return {
@@ -86,7 +96,7 @@ function stubHost(options: { capabilities: string[]; deferred: boolean; sendAcce
           graphStatus: 'ready',
           runtimeProtocolVersion: 3,
           minCompatibleRuntimeClientVersion: 2,
-          capabilities: ['agent-session.host-authority.v1', ...options.capabilities]
+          capabilities: options.capabilities ?? [HOST_AUTHORITY]
         }
       }
     }
@@ -99,21 +109,26 @@ function stubHost(options: { capabilities: string[]; deferred: boolean; sendAcce
             handle: 'term_long',
             worktreeId: WORKTREE_ID,
             tabId: 'host-tab-long',
-            paneKey: `host-tab-long:${FOCUS_LEAF_ID}`,
-            ...(options.deferred ? { startupPromptDeferred: true } : {})
+            paneKey: `host-tab-long:${FOCUS_LEAF_ID}`
           },
-          disposition: 'created'
+          disposition: 'created',
+          ...(options.launchPrompt ? { launchPrompt: options.launchPrompt } : {})
         }
       }
     }
-    if (request.method === 'terminal.send') {
+    if (request.method === 'session.tabs.createTerminal') {
       return {
-        id: 'send',
+        id: 'legacy',
         ok: true,
-        result: {
-          send: { handle: 'term_long', accepted: options.sendAccepted ?? true, bytesWritten: 6 }
-        }
+        result: { tab: { id: 'host-tab-long', leafId: FOCUS_LEAF_ID } }
       }
+    }
+    if (request.method === 'terminal.wait') {
+      const next = waitReplies.shift()
+      if (!next) {
+        throw new Error('no scripted wait reply')
+      }
+      return { id: 'wait', ok: true, result: next() }
     }
     return { id: 'list', ok: true, result: makeSnapshot() }
   })
@@ -130,61 +145,108 @@ function calls(runtimeCall: ReturnType<typeof stubHost>, method: string): Runtim
 const LAUNCH = {
   worktreeId: WORKTREE_ID,
   environmentId: ENVIRONMENT_ID,
+  agent: 'claude' as const,
   launchAgent: 'claude' as const,
   agentSessionKind: 'fresh' as const,
+  command: "claude 'review'",
   prompt: 'review',
   promptDelivery: 'auto-submit' as const
 }
 
-describe('a paired launch whose host defers the prompt', () => {
+describe('a paired launch whose host delivers the prompt itself', () => {
   beforeEach(() => stubTerminalCreateEnvironment(mocks))
   afterEach(() => resetTerminalCreateEnvironment())
 
-  it('opts in on a long-prompt host and has its writer deliver the deferred prompt', async () => {
+  it('only watches the host deliver it: a read-only wait, never a write', async () => {
     const runtimeCall = stubHost({
-      capabilities: [TERMINAL_QUICK_COMMAND_LONG_PROMPTS_RUNTIME_CAPABILITY],
-      deferred: true
+      launchPrompt: { outcome: 'pending' },
+      waitReplies: [() => ({ wait: { launchPrompt: { outcome: 'handed-to-terminal' } } })]
     })
 
-    await expect(createWebRuntimeAgentSessionTerminalWithPrompt(LAUNCH)).resolves.toEqual({
-      outcome: { status: 'created' },
-      promptDelivered: true
-    })
+    const created = await createWebRuntimeAgentSessionTerminalWithPrompt(LAUNCH)
 
-    expect(calls(runtimeCall, 'terminal.createAgentSession')[0]?.params).toMatchObject({
-      prompt: 'review',
-      deferOversizedPrompt: true
-    })
-    expect(calls(runtimeCall, 'terminal.send').map((request) => request.params)).toEqual([
-      expect.objectContaining({ terminal: 'term_long', text: 'review', launchPrompt: true })
-    ])
-  })
-
-  it('reports an undelivered prompt so the caller can say so', async () => {
-    stubHost({
-      capabilities: [TERMINAL_QUICK_COMMAND_LONG_PROMPTS_RUNTIME_CAPABILITY],
-      deferred: true,
-      sendAccepted: false
-    })
-
-    await expect(createWebRuntimeAgentSessionTerminalWithPrompt(LAUNCH)).resolves.toEqual({
-      outcome: { status: 'created' },
-      promptDelivered: false
-    })
-  })
-
-  it('never sends the opt-in or a launch prompt to a host that predates them', async () => {
-    const runtimeCall = stubHost({ capabilities: [], deferred: false })
-
-    await expect(createWebRuntimeAgentSessionTerminalWithPrompt(LAUNCH)).resolves.toEqual({
-      outcome: { status: 'created' },
-      promptDelivered: true
-    })
-
-    // Its create schema is strict, so the field would fail the whole launch.
+    expect(created.outcome).toEqual({ status: 'created' })
+    await expect(created.promptDelivered).resolves.toBe(true)
     expect(calls(runtimeCall, 'terminal.createAgentSession')[0]?.params).not.toHaveProperty(
       'deferOversizedPrompt'
     )
+    expect(calls(runtimeCall, 'terminal.wait').map((request) => request.params)).toEqual([
+      expect.objectContaining({ terminal: 'term_long', for: 'launch-prompt' })
+    ])
     expect(calls(runtimeCall, 'terminal.send')).toEqual([])
+    expect(mocks.deliverLaunchPromptToAgentTab).not.toHaveBeenCalled()
+  })
+
+  it('reports a delivery the host could not complete', async () => {
+    stubHost({
+      launchPrompt: { outcome: 'pending' },
+      waitReplies: [() => ({ wait: { launchPrompt: { outcome: 'not-delivered' } } })]
+    })
+
+    const created = await createWebRuntimeAgentSessionTerminalWithPrompt(LAUNCH)
+    await expect(created.promptDelivered).resolves.toBe(false)
+  })
+
+  it('asks again after a dropped observation, and says unknown rather than failed', async () => {
+    const dropped = (): never => {
+      throw new Error('connection closed')
+    }
+    const runtimeCall = stubHost({
+      launchPrompt: { outcome: 'pending' },
+      waitReplies: [dropped, () => ({ wait: { launchPrompt: { outcome: 'handed-to-terminal' } } })]
+    })
+    await expect(
+      (await createWebRuntimeAgentSessionTerminalWithPrompt(LAUNCH)).promptDelivered
+    ).resolves.toBe(true)
+    expect(calls(runtimeCall, 'terminal.wait')).toHaveLength(2)
+
+    stubHost({ launchPrompt: { outcome: 'pending' }, waitReplies: [dropped, dropped, dropped] })
+    await expect(
+      (await createWebRuntimeAgentSessionTerminalWithPrompt(LAUNCH)).promptDelivered
+    ).resolves.toBeNull()
+  })
+
+  it('does nothing more when the command carried the prompt, as an older host always does', async () => {
+    const runtimeCall = stubHost({})
+
+    const created = await createWebRuntimeAgentSessionTerminalWithPrompt(LAUNCH)
+
+    await expect(created.promptDelivered).resolves.toBe(true)
+    expect(calls(runtimeCall, 'terminal.wait')).toEqual([])
+  })
+
+  it('keeps a long prompt off a legacy create route and pastes it once the agent is ready', async () => {
+    const runtimeCall = stubHost({ capabilities: [] })
+    const prompt = 'x'.repeat(LEGACY_MAX_QUICK_COMMAND_AGENT_PROMPT_LENGTH + 1)
+
+    const created = await createWebRuntimeAgentSessionTerminalWithPrompt({
+      ...LAUNCH,
+      prompt,
+      command: `claude '${prompt}'`,
+      legacyCleanLaunch: { command: 'claude' }
+    })
+
+    await expect(created.promptDelivered).resolves.toBe(true)
+    expect(calls(runtimeCall, 'session.tabs.createTerminal')[0]?.params).toMatchObject({
+      command: 'claude'
+    })
+    expect(mocks.deliverLaunchPromptToAgentTab).toHaveBeenCalledWith(
+      expect.objectContaining({ content: prompt, submit: true })
+    )
+  })
+
+  it('pastes a draft the host could not carry, unsent, instead of seeding it as delivered', async () => {
+    stubHost({ launchPrompt: { outcome: 'not-delivered' } })
+
+    await createWebRuntimeAgentSessionTerminalWithLaunchDraft({
+      ...LAUNCH,
+      promptDelivery: 'draft',
+      launchDraft: 'review'
+    })
+
+    expect(mocks.deliverLaunchPromptToAgentTab).toHaveBeenCalledWith(
+      expect.objectContaining({ content: 'review', submit: false })
+    )
+    expect(mocks.seedNativeChatLaunchDraftForAgentTab).not.toHaveBeenCalled()
   })
 })

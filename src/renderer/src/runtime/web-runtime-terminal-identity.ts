@@ -1,4 +1,5 @@
 import { parsePaneKey } from '../../../shared/stable-pane-id'
+import type { AgentSessionLaunchPromptReceipt } from '../../../shared/agent-session-host-authority'
 import type { CreatedAgentTerminalIdentity } from './web-runtime-session-types'
 
 export function createdTerminalLeafId(terminal: CreatedAgentTerminalIdentity): string | undefined {
@@ -9,6 +10,7 @@ export function createdTerminalLeafId(terminal: CreatedAgentTerminalIdentity): s
 /** Decode only the host terminal coordinates consumed by the paired renderer. */
 export function readCreatedAgentTerminalIdentity(value: unknown): {
   terminal: CreatedAgentTerminalIdentity
+  launchPrompt?: AgentSessionLaunchPromptReceipt
 } {
   if (typeof value !== 'object' || value === null || !('terminal' in value)) {
     throw new Error('Host returned an invalid agent terminal result')
@@ -26,15 +28,17 @@ export function readCreatedAgentTerminalIdentity(value: unknown): {
     throw new Error('Host returned invalid agent terminal coordinates')
   }
   const handle = 'handle' in terminal && typeof terminal.handle === 'string' ? terminal.handle : ''
-  // A deferral is actionable only with the terminal to deliver into.
-  const startupPromptDeferred =
-    'startupPromptDeferred' in terminal && terminal.startupPromptDeferred === true && handle !== ''
+  const launchPrompt =
+    'launchPrompt' in value ? readLaunchPromptReceipt(value.launchPrompt) : undefined
   return {
-    terminal: {
-      tabId,
-      paneKey,
-      ...(handle ? { handle } : {}),
-      ...(startupPromptDeferred ? { startupPromptDeferred: true as const } : {})
-    }
+    terminal: { tabId, paneKey, ...(handle ? { handle } : {}) },
+    ...(launchPrompt ? { launchPrompt } : {})
   }
+}
+
+/** An outcome this build does not know is ignored, never guessed at (wire compatibility rule 4). */
+function readLaunchPromptReceipt(value: unknown): AgentSessionLaunchPromptReceipt | undefined {
+  const outcome =
+    typeof value === 'object' && value !== null && 'outcome' in value ? value.outcome : undefined
+  return outcome === 'pending' || outcome === 'not-delivered' ? { outcome } : undefined
 }

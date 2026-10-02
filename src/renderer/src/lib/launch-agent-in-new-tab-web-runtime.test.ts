@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { TERMINAL_QUICK_COMMAND_LONG_PROMPTS_RUNTIME_CAPABILITY as LONG_PROMPTS } from '../../../shared/terminal-quick-command-capabilities'
 
 const mocks = vi.hoisted(() => ({
   createTab: vi.fn(),
   closeTab: vi.fn(),
   createWebRuntimeSessionTerminal: vi.fn(),
   createWebRuntimeAgentSessionTerminalWithPrompt: vi.fn(),
+  createWebRuntimeAgentSessionTerminal: vi.fn(),
   setActiveTabType: vi.fn(),
   toastMessage: vi.fn()
 }))
@@ -47,7 +49,8 @@ const store = {
   setTabBarOrder: vi.fn(),
   setAgentStatus: vi.fn(),
   seedNativeChatLaunchPrompt: vi.fn(),
-  markNativeChatLaunchPromptFailed: vi.fn()
+  markNativeChatLaunchPromptFailed: vi.fn(),
+  runtimeStatusByEnvironmentId: new Map<string, { status: { capabilities: string[] } }>()
 }
 
 vi.mock('@/store', () => ({ useAppStore: { getState: () => store } }))
@@ -62,6 +65,7 @@ vi.mock('@/runtime/web-runtime-session', () => ({
   createWebRuntimeSessionTerminal: mocks.createWebRuntimeSessionTerminal,
   createWebRuntimeAgentSessionTerminalWithPrompt:
     mocks.createWebRuntimeAgentSessionTerminalWithPrompt,
+  createWebRuntimeAgentSessionTerminal: mocks.createWebRuntimeAgentSessionTerminal,
   isWebRuntimeSessionActive: vi.fn(() => true),
   isWebTerminalSurfaceTabId: vi.fn(() => false)
 }))
@@ -77,9 +81,16 @@ describe('launchAgentInNewTab paired web runtime', () => {
     }
     store.tabsByWorktree = { 'wt-1': [{ id: 'tab-1' }] }
     mocks.createWebRuntimeSessionTerminal.mockResolvedValue({ status: 'created' })
-    mocks.createWebRuntimeAgentSessionTerminalWithPrompt.mockResolvedValue({
+    mocks.createWebRuntimeAgentSessionTerminal.mockResolvedValue({
       outcome: { status: 'created' },
       promptDelivered: true
+    })
+    store.runtimeStatusByEnvironmentId = new Map([
+      ['web-runtime', { status: { capabilities: [LONG_PROMPTS] } }]
+    ])
+    mocks.createWebRuntimeAgentSessionTerminalWithPrompt.mockResolvedValue({
+      outcome: { status: 'created' },
+      promptDelivered: Promise.resolve(true)
     })
   })
 
@@ -140,6 +151,7 @@ describe('launchAgentInNewTab paired web runtime', () => {
       targetGroupId: 'group-1',
       activate: true,
       agentSessionKind: 'fresh',
+      agent: 'codex',
       launchAgent: 'codex',
       command: "codex '--model' 'gpt-5' '--reasoning-effort' 'high' 'fix the spinner'",
       env: { CODEX_PROFILE: 'captured' },
@@ -159,7 +171,7 @@ describe('launchAgentInNewTab paired web runtime', () => {
   it('tells the user when the host could not deliver a deferred prompt', async () => {
     mocks.createWebRuntimeAgentSessionTerminalWithPrompt.mockResolvedValue({
       outcome: { status: 'created' },
-      promptDelivered: false
+      promptDelivered: Promise.resolve(false)
     })
     const { launchAgentInWebHostTab } = await import('./launch-agent-web-host-tab')
 
@@ -182,5 +194,73 @@ describe('launchAgentInNewTab paired web runtime', () => {
 
     expect(delivery).toEqual({ delivered: false, failureNotified: true })
     expect(mocks.toastMessage).toHaveBeenCalledWith(expect.stringContaining("wasn't sent"))
+  })
+
+  it('shows the tab before the host has delivered, and stays quiet when the outcome is unknown', async () => {
+    let settle: (delivered: boolean | null) => void = () => {}
+    mocks.createWebRuntimeAgentSessionTerminalWithPrompt.mockResolvedValue({
+      outcome: { status: 'created' },
+      promptDelivered: new Promise<boolean | null>((resolve) => (settle = resolve))
+    })
+    const { launchAgentInWebHostTab } = await import('./launch-agent-web-host-tab')
+
+    const delivery = launchAgentInWebHostTab({
+      agent: 'claude',
+      worktreeId: 'wt-1',
+      environmentId: 'web-runtime',
+      startupPlan: {
+        agent: 'claude',
+        launchCommand: 'claude',
+        expectedProcess: 'claude',
+        followupPrompt: null,
+        launchConfig: { agentCommand: 'claude', agentArgs: '', agentEnv: {} }
+      },
+      prompt: 'review the change',
+      promptDelivery: 'auto-submit',
+      pastePromptAfterReady: null,
+      submitPastedPrompt: false
+    })
+    await vi.waitFor(() => expect(mocks.setActiveTabType).toHaveBeenCalledWith('terminal', 'wt-1'))
+    settle(null)
+
+    await expect(delivery).resolves.toEqual({ delivered: false, failureNotified: false })
+    expect(mocks.toastMessage).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['an older host', ['terminal.quick-commands.v1']],
+    ['a host whose status is unverified', null]
+  ])(
+    'pastes a long prompt itself for %s, which would build it into the command',
+    async (_label, caps) => {
+      store.runtimeStatusByEnvironmentId = new Map(
+        caps ? [['web-runtime', { status: { capabilities: caps } }]] : []
+      )
+      const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
+      const prompt = 'x'.repeat(7000)
+
+      launchAgentInNewTab({ agent: 'claude', worktreeId: 'wt-1', prompt })
+
+      expect(mocks.createWebRuntimeAgentSessionTerminal).toHaveBeenCalledWith(
+        expect.objectContaining({ promptAfterReady: prompt, submitPrompt: true })
+      )
+      expect(mocks.createWebRuntimeAgentSessionTerminalWithPrompt).not.toHaveBeenCalled()
+    }
+  )
+
+  it('hands a long prompt to a current host, with a prompt-free launch for its legacy route', async () => {
+    const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
+    const prompt = 'x'.repeat(7000)
+
+    launchAgentInNewTab({ agent: 'claude', worktreeId: 'wt-1', prompt })
+
+    expect(mocks.createWebRuntimeAgentSessionTerminalWithPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt,
+        legacyCleanLaunch: expect.objectContaining({
+          command: expect.not.stringContaining('xxx')
+        })
+      })
+    )
   })
 })

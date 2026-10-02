@@ -174,8 +174,6 @@ export const CreateAgentSessionParams: z.ZodType<RuntimeCreateAgentSessionReques
       )
       .optional(),
     promptDelivery: PromptDelivery.optional(),
-    // Why opt-in: only a caller that delivers `startupPromptDeferred` itself may have it deferred.
-    deferOversizedPrompt: z.literal(true).optional(),
     agentArgs: AgentArgs.optional(),
     launchPreferences: LaunchPreferences.optional(),
     startupCwd: z.string().min(1).max(MAX_WORKTREE_SELECTOR_LENGTH).optional(),

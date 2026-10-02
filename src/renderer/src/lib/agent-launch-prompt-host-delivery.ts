@@ -15,7 +15,10 @@ export async function deliverLaunchPromptThroughHost(args: {
 }): Promise<boolean> {
   const ptyId = await waitForTabPtyId(args.tabId, PTY_SPAWN_TIMEOUT_MS)
   const delivered = ptyId
-    ? await window.api.pty.deliverAgentLaunchPrompt(ptyId, args.content).catch(() => false)
+    ? await window.api.pty.deliverAgentLaunchPrompt(ptyId, args.content).then(
+        (receipt) => receipt.outcome === 'handed-to-terminal',
+        () => false
+      )
     : false
   if (!delivered) {
     args.onTimeout?.()

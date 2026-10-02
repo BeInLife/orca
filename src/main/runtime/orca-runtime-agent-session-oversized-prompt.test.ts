@@ -1,7 +1,14 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeCreateAgentSessionRequest } from '../../shared/agent-session-host-authority'
-import { CreateAgentSessionParams } from '../../shared/rpc-contract/agent-session-params'
 import { OrcaRuntimeService } from './orca-runtime'
+import { RpcDispatcher } from './rpc/dispatcher'
+import { TERMINAL_METHODS } from './rpc/methods/terminal'
+
+const mocks = vi.hoisted(() => ({ deliverTerminalAgentLaunchPrompt: vi.fn() }))
+
+vi.mock('./rpc/methods/agent-launch-terminal-prompt', () => ({
+  deliverTerminalAgentLaunchPrompt: mocks.deliverTerminalAgentLaunchPrompt
+}))
 
 // Over the 128 KiB per-argument limit every POSIX host shares, so it never rides argv here.
 const OVERSIZED_PROMPT = 'p'.repeat(130 * 1024)
@@ -20,7 +27,13 @@ function request(
   }
 }
 
-function createRuntime() {
+function createRuntime(
+  workspace: { id: string; path: string; connectionId: string | null } = {
+    id: 'worktree-1',
+    path: '/tmp/worktree-1',
+    connectionId: null
+  }
+) {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: createAgentSession reads only these four settings from the store before the stubbed spawn.
   const runtime = new OrcaRuntimeService({
     getSettings: () => ({
@@ -31,48 +44,186 @@ function createRuntime() {
     })
   } as never)
   Object.assign(runtime, {
-    resolveTerminalWorkspaceLaunchScope: vi.fn(async () => ({
-      id: 'worktree-1',
-      path: '/tmp/worktree-1',
-      connectionId: null
-    })),
+    resolveTerminalWorkspaceLaunchScope: vi.fn(async () => workspace),
     executionOwnerSupportsAgentSessionOperation: vi.fn(async () => true)
   })
-  const createTerminal = vi.spyOn(runtime, 'createTerminal').mockResolvedValue({
+  return runtime
+}
+
+function stubSpawn(runtime: OrcaRuntimeService) {
+  return vi.spyOn(runtime, 'createTerminal').mockResolvedValue({
     handle: 'term_oversized',
     worktreeId: 'worktree-1',
     title: null
   })
-  return { runtime, createTerminal }
+}
+
+async function observeLaunchPrompt(runtime: OrcaRuntimeService, terminal: string) {
+  const dispatcher = new RpcDispatcher({ runtime, methods: TERMINAL_METHODS })
+  return await dispatcher.dispatch({
+    id: 'wait',
+    authToken: 'token',
+    method: 'terminal.wait',
+    params: { terminal, for: 'launch-prompt' }
+  })
 }
 
 describe('a paired create handed a prompt its launch command cannot carry', () => {
-  it('starts the agent clean and tells an opted-in caller to deliver the prompt', async () => {
-    const { runtime, createTerminal } = createRuntime()
-
-    const created = await runtime.createAgentSession(request({ deferOversizedPrompt: true }))
-
-    expect(created.terminal.startupPromptDeferred).toBe(true)
-    expect(createTerminal.mock.calls[0]?.[1]?.command).not.toContain('ppp')
+  beforeEach(() => {
+    mocks.deliverTerminalAgentLaunchPrompt.mockReset()
+    mocks.deliverTerminalAgentLaunchPrompt.mockResolvedValue(true)
   })
 
-  it('keeps building the prompt into the command for a caller that has not opted in', async () => {
-    const { runtime, createTerminal } = createRuntime()
+  it('starts the agent clean, replies at once, and delivers the prompt itself', async () => {
+    const runtime = createRuntime()
+    const createTerminal = stubSpawn(runtime)
+    let finishReadiness: (delivered: boolean) => void = () => {}
+    mocks.deliverTerminalAgentLaunchPrompt.mockReturnValue(
+      new Promise<boolean>((resolve) => (finishReadiness = resolve))
+    )
 
     const created = await runtime.createAgentSession(request())
 
-    // Old clients and the other create call sites deliver nothing themselves.
-    expect(created.terminal.startupPromptDeferred).toBeUndefined()
-    expect(createTerminal.mock.calls[0]?.[1]?.command).toContain('ppp')
+    // The reply does not wait for the agent's TUI; the pane can mount and take a trust answer.
+    expect(created.launchPrompt).toEqual({ outcome: 'pending' })
+    expect(createTerminal.mock.calls[0]?.[1]?.command).not.toContain('ppp')
+    expect(mocks.deliverTerminalAgentLaunchPrompt).toHaveBeenCalledWith({
+      runtime,
+      handle: 'term_oversized',
+      text: OVERSIZED_PROMPT
+    })
+
+    const observed = observeLaunchPrompt(runtime, 'term_oversized')
+    finishReadiness(true)
+    await expect(observed).resolves.toMatchObject({
+      ok: true,
+      result: {
+        wait: { condition: 'launch-prompt', launchPrompt: { outcome: 'handed-to-terminal' } }
+      }
+    })
   })
 
-  it('accepts the opt-in only as a literal true', () => {
-    const base = { ...request(), prompt: 'review' }
-    expect(
-      CreateAgentSessionParams.safeParse({ ...base, deferOversizedPrompt: true }).success
-    ).toBe(true)
-    expect(
-      CreateAgentSessionParams.safeParse({ ...base, deferOversizedPrompt: false }).success
-    ).toBe(false)
+  it('reports a delivery that did not land, read-only and as often as asked', async () => {
+    const runtime = createRuntime()
+    stubSpawn(runtime)
+    mocks.deliverTerminalAgentLaunchPrompt.mockResolvedValue(false)
+
+    await runtime.createAgentSession(request())
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(observeLaunchPrompt(runtime, 'term_oversized')).resolves.toMatchObject({
+        result: { wait: { satisfied: false, launchPrompt: { outcome: 'not-delivered' } } }
+      })
+    }
+    expect(mocks.deliverTerminalAgentLaunchPrompt).toHaveBeenCalledOnce()
+  })
+
+  it('delivers once for a replayed create, and not at all for a prompt that fits', async () => {
+    const runtime = createRuntime()
+    const createTerminal = stubSpawn(runtime)
+    const replayed = request()
+
+    await runtime.createAgentSession(replayed)
+    await expect(runtime.createAgentSession(replayed)).resolves.toMatchObject({
+      disposition: 'replayed',
+      launchPrompt: { outcome: 'pending' }
+    })
+    expect(mocks.deliverTerminalAgentLaunchPrompt).toHaveBeenCalledOnce()
+
+    const fits = await runtime.createAgentSession(
+      request({
+        clientOperationId: `${Date.now()}-fedcba9876543210fedcba9876543210`,
+        prompt: 'review'
+      })
+    )
+    expect(fits.launchPrompt).toBeUndefined()
+    expect(createTerminal.mock.calls.at(-1)?.[1]?.command).toContain('review')
+    expect(mocks.deliverTerminalAgentLaunchPrompt).toHaveBeenCalledOnce()
+  })
+
+  it('keeps delivering after the client that asked disconnects', async () => {
+    const runtime = createRuntime()
+    stubSpawn(runtime)
+    const disconnect = new AbortController()
+
+    await runtime.createAgentSession(request(), { signal: disconnect.signal })
+    disconnect.abort()
+
+    await expect(observeLaunchPrompt(runtime, 'term_oversized')).resolves.toMatchObject({
+      result: {
+        wait: { condition: 'launch-prompt', launchPrompt: { outcome: 'handed-to-terminal' } }
+      }
+    })
+  })
+
+  it('starts clean and hands back a draft the command cannot carry instead of failing', async () => {
+    const runtime = createRuntime()
+    const createTerminal = stubSpawn(runtime)
+
+    const created = await runtime.createAgentSession(request({ promptDelivery: 'draft' }))
+
+    expect(created.launchPrompt).toEqual({ outcome: 'not-delivered' })
+    expect(createTerminal.mock.calls[0]?.[1]?.command).not.toContain('ppp')
+    // A draft is unsent text for the caller to paste; the host never submits it.
+    expect(mocks.deliverTerminalAgentLaunchPrompt).not.toHaveBeenCalled()
+  })
+
+  it('still delivers the prompt to a PTY a lost spawn left behind, once', async () => {
+    const runtime = createRuntime({
+      id: 'worktree-1',
+      path: '/remote/worktree-1',
+      connectionId: 'ssh-1'
+    })
+    const handleByPtyId = new Map<string, string>()
+    const listProcesses = vi.fn()
+    Object.assign(runtime, {
+      ptyController: { listProcesses },
+      adoptControllerTerminalHandle: vi.fn((ptyId: string, handle: string) => {
+        handleByPtyId.set(ptyId, handle)
+      }),
+      recordPtyWorktree: vi.fn((ptyId: string, worktreeId: string) => ({
+        ptyId,
+        worktreeId,
+        title: null
+      })),
+      issuePtyHandle: vi.fn((pty: { ptyId: string }) => handleByPtyId.get(pty.ptyId))
+    })
+    const lostSpawn = Object.assign(new Error('execution_owner_unavailable'), {
+      agentSessionOperationOutcome: 'unknown' as const
+    })
+    const createTerminal = vi
+      .spyOn(runtime, 'createTerminal')
+      .mockImplementation(async (_worktree, opts) => {
+        opts?.onPtySpawnCommitted?.()
+        throw lostSpawn
+      })
+    const lost = request()
+    await expect(runtime.createAgentSession(lost, { clientId: 'device-a' })).rejects.toThrow(
+      lostSpawn.message
+    )
+    const orphanHandle = createTerminal.mock.calls[0]?.[1]?.preAllocatedHandle
+    listProcesses.mockResolvedValue([
+      {
+        id: 'ssh-1:pty2:e:1',
+        cwd: '/remote/worktree-1',
+        title: 'claude',
+        worktreeId: 'worktree-1',
+        terminalHandle: orphanHandle
+      }
+    ])
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(
+        runtime.createAgentSession(lost, { clientId: 'device-a' })
+      ).resolves.toMatchObject({
+        disposition: 'replayed',
+        terminal: { handle: orphanHandle },
+        launchPrompt: { outcome: 'pending' }
+      })
+    }
+    expect(mocks.deliverTerminalAgentLaunchPrompt).toHaveBeenCalledOnce()
+    expect(mocks.deliverTerminalAgentLaunchPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ handle: orphanHandle, text: OVERSIZED_PROMPT })
+    )
   })
 })

@@ -52,7 +52,7 @@ describe('pty:deliverAgentLaunchPrompt', () => {
 
     await expect(
       invoke({ fromMainWindow: true }, { id: 'pty-1', text: 'long prompt' })
-    ).resolves.toBe(true)
+    ).resolves.toEqual({ outcome: 'handed-to-terminal' })
     expect(mocks.deliverTerminalAgentLaunchPrompt).toHaveBeenCalledWith({
       runtime,
       handle: 'term_local',
@@ -60,12 +60,17 @@ describe('pty:deliverAgentLaunchPrompt', () => {
     })
   })
 
-  it('answers false without writing for another window or an unknown PTY', async () => {
+  it('answers not-delivered without writing for another window or an unknown PTY', async () => {
     resolveTerminalHandleForPty.mockReturnValue(null)
+    const notDelivered = { outcome: 'not-delivered' }
 
-    await expect(invoke({ fromMainWindow: false }, { id: 'pty-1', text: 'p' })).resolves.toBe(false)
-    await expect(invoke({ fromMainWindow: true }, { id: 'pty-1', text: 'p' })).resolves.toBe(false)
-    await expect(invoke({ fromMainWindow: true }, { id: '', text: 'p' })).resolves.toBe(false)
+    for (const [event, args] of [
+      [{ fromMainWindow: false }, { id: 'pty-1', text: 'p' }],
+      [{ fromMainWindow: true }, { id: 'pty-1', text: 'p' }],
+      [{ fromMainWindow: true }, { id: '', text: 'p' }]
+    ]) {
+      await expect(invoke(event, args)).resolves.toEqual(notDelivered)
+    }
     expect(mocks.deliverTerminalAgentLaunchPrompt).not.toHaveBeenCalled()
   })
 })

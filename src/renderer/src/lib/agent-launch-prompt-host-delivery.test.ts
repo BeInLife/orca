@@ -46,7 +46,7 @@ describe('deliverLaunchPromptThroughHost', () => {
   })
 
   it('waits for the tab’s PTY, then hands the prompt to the host writer', async () => {
-    deliverAgentLaunchPrompt.mockResolvedValue(true)
+    deliverAgentLaunchPrompt.mockResolvedValue({ outcome: 'handed-to-terminal' })
     const onTimeout = vi.fn()
 
     const delivery = deliverLaunchPromptThroughHost({ tabId: 'tab-1', content: 'p', onTimeout })
@@ -69,7 +69,7 @@ describe('deliverLaunchPromptThroughHost', () => {
   })
 
   it('reports a prompt the host could not deliver', async () => {
-    deliverAgentLaunchPrompt.mockResolvedValue(false)
+    deliverAgentLaunchPrompt.mockResolvedValue({ outcome: 'not-delivered' })
     store.set({ ptyIdsByTabId: { 'tab-1': ['pty-1'] } })
     const onTimeout = vi.fn()
 

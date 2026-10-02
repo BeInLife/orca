@@ -14,6 +14,10 @@ import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner
 import { isWebRuntimeSessionActive } from '@/runtime/web-runtime-session'
 import { launchAgentInWebHostTab } from '@/lib/launch-agent-web-host-tab'
 import {
+  pairedHostLegacyCleanLaunch,
+  pairedHostMustPasteLongPrompt
+} from '@/lib/paired-host-long-prompt-compat'
+import {
   resolveTuiAgentLaunchArgs,
   resolveTuiAgentLaunchEnv
 } from '../../../shared/tui-agent-launch-defaults'
@@ -157,6 +161,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     sessionOptions: resolveInitialNativeChatSessionOptions(store.settings, initialViewModeOptions)
   }
   const runtimeEnvironmentId = getRuntimeEnvironmentIdForWorktree(store, worktreeId)
+  const isWebHostLaunch = isWebRuntimeSessionActive(runtimeEnvironmentId)
   const { startupPlan, pasteDraftAfterLaunch, submitPastedPrompt, deliverPastedPromptThroughHost } =
     planLaunchAgentStartupPrompt({
       base: startupPlanBase,
@@ -164,7 +169,11 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       promptDelivery,
       isFollowupPath,
       // Why: a paired host plans its own command line; this process owns only local launches.
-      deliverOversizedPromptAfterReady: runtimeEnvironmentId === null
+      deliverOversizedPromptAfterReady: runtimeEnvironmentId === null,
+      pastePromptAfterReady:
+        isWebHostLaunch &&
+        runtimeEnvironmentId !== null &&
+        pairedHostMustPasteLongPrompt(store, runtimeEnvironmentId, trimmedPrompt)
     })
   let promptDeliveryResult: Promise<{ delivered: boolean; failureNotified: boolean }> | undefined
 
@@ -172,7 +181,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     return null
   }
 
-  if (isWebRuntimeSessionActive(runtimeEnvironmentId)) {
+  if (isWebHostLaunch) {
     if (beforeSurfaceOpen?.({ kind: 'host-published' }) === false) {
       return null
     }
@@ -191,6 +200,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       // Why: omission means terminal locally, but would let a paired host apply
       // its own default; send the client's resolved terminal choice explicitly.
       viewMode: initialViewModeProps.viewMode ?? 'terminal',
+      ...pairedHostLegacyCleanLaunch(startupPlanBase, trimmedPrompt),
       onPromptDelivered
     })
     return {

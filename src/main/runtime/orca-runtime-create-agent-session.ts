@@ -17,7 +17,12 @@ import {
 } from './orca-runtime-core'
 import { isTuiAgentEnabled } from '../../shared/tui-agent-selection'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
-import { buildAgentDraftLaunchPlan, buildAgentStartupPlan } from '../../shared/tui-agent-startup'
+import {
+  launchPromptReceipt,
+  planAgentSessionCreateLaunch
+} from './agent-session-create-launch-plan'
+import { deliverTerminalAgentLaunchPrompt } from './rpc/methods/agent-launch-terminal-prompt'
+import { hostLaunchPromptDeliveriesFor } from './host-launch-prompt-deliveries'
 import type { RuntimeTerminalCreate } from '../../shared/runtime-types'
 import type {
   AgentSessionCreateOperation,
@@ -64,8 +69,7 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
           request.placement?.tabId ?? null,
           request.placement?.leafId ?? null,
           request.viewMode ?? null,
-          ...(request.terminalKittyKeyboardProtocol === true ? ['kitty-keyboard'] : []),
-          ...(request.deferOversizedPrompt === true ? ['defer-oversized-prompt'] : [])
+          ...(request.terminalKittyKeyboardProtocol === true ? ['kitty-keyboard'] : [])
         ])
       )
       .digest('base64url')
@@ -82,7 +86,17 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
         if (!reclaimed) {
           throw error
         }
-        return { terminal: reclaimed, disposition: 'replayed' }
+        // The lost spawn's prompt is still owed; one record per handle keeps a re-reclaim from
+        // writing it twice.
+        const { owedLaunchPrompt, draftNotCarried } = existing.reclaim
+        if (owedLaunchPrompt) {
+          this.startHostLaunchPromptDelivery(reclaimed.handle, owedLaunchPrompt)
+        }
+        return {
+          terminal: reclaimed,
+          disposition: 'replayed',
+          ...launchPromptReceipt(owedLaunchPrompt, draftNotCarried)
+        }
       }
       return { ...replayed, disposition: 'replayed' }
     }
@@ -142,8 +156,7 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
             request.placement?.tabId ?? null,
             request.placement?.leafId ?? null,
             request.viewMode ?? null,
-            ...(request.terminalKittyKeyboardProtocol === true ? ['kitty-keyboard'] : []),
-            ...(request.deferOversizedPrompt === true ? ['defer-oversized-prompt'] : [])
+            ...(request.terminalKittyKeyboardProtocol === true ? ['kitty-keyboard'] : [])
           ])
         )
         .digest('base64url')
@@ -161,17 +174,16 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
         ...(request.agentArgs !== undefined ? { agentArgs: request.agentArgs } : {}),
         sessionOptions: this.toAgentSessionOptions(request.launchPreferences)
       })
-      const startup =
-        request.promptDelivery === 'draft'
-          ? buildAgentDraftLaunchPlan({ ...startupArgs, draft: request.prompt ?? '' })
-          : buildAgentStartupPlan({
-              ...startupArgs,
-              prompt: request.prompt ?? '',
-              allowEmptyPromptLaunch: true,
-              ...(request.deferOversizedPrompt ? { deliverOversizedPromptAfterReady: true } : {})
-            })
+      const { startup, owedLaunchPrompt, draftNotCarried } = planAgentSessionCreateLaunch(
+        startupArgs,
+        request
+      )
       if (!startup) {
         throw new Error('agent_session_identity_required')
+      }
+      reclaim.owedLaunchPrompt = owedLaunchPrompt
+      if (draftNotCarried) {
+        reclaim.draftNotCarried = true
       }
       if (caller.signal?.aborted) {
         throw new Error('client_disconnected')
@@ -224,14 +236,15 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
         }
         throw error
       }
-      // Only an opted-in caller is told; it delivers what the command did not carry.
-      const deferred =
-        request.deferOversizedPrompt === true &&
-        'followupPrompt' in startup &&
-        startup.followupPrompt !== null
+      // Started after the spawn and not awaited: the reply returns now so the pane mounts and the
+      // user can answer a trust or update prompt; the host owns the write from here.
+      if (owedLaunchPrompt) {
+        this.startHostLaunchPromptDelivery(terminal.handle, owedLaunchPrompt)
+      }
       return {
-        terminal: deferred ? { ...terminal, startupPromptDeferred: true } : terminal,
-        disposition: 'created'
+        terminal,
+        disposition: 'created',
+        ...launchPromptReceipt(owedLaunchPrompt, draftNotCarried)
       }
     })()
     this.agentSessionCreateOperations.set(operationKey, {
@@ -265,6 +278,14 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
       }
       throw error
     }
+  }
+
+  /** Writes a launch prompt the command could not carry, once per terminal, independent of the
+   *  client that asked: it ends on delivery, the readiness timeout, or the terminal going away. */
+  private startHostLaunchPromptDelivery(handle: string, text: string): void {
+    hostLaunchPromptDeliveriesFor(this).start(handle, () =>
+      deliverTerminalAgentLaunchPrompt({ runtime: this, handle, text })
+    )
   }
 
   // Why: the host may still hold the PTY this operation launched. Adoption-only —

@@ -18,7 +18,6 @@ import {
   ensureUnsupportedTerminalPromptReceipt,
   observeReplayedTerminalPrompt
 } from './terminal-prompt-receipt'
-import { sendTerminalLaunchPrompt } from './terminal-launch-prompt-send'
 
 export const TERMINAL_SEND_METHODS = [
   defineMethod({
@@ -97,9 +96,6 @@ export const TERMINAL_SEND_METHODS = [
             bytesWritten: 0
           }
         }
-      }
-      if (params.launchPrompt === true) {
-        return { send: await sendTerminalLaunchPrompt(runtime, params) }
       }
       if (
         leaf?.ptyId &&

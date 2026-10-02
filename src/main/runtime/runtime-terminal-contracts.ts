@@ -102,7 +102,13 @@ export type AgentSessionCreateOperation = {
   promise: Promise<RuntimeCreateAgentSessionResult>
   // Why: a lost pty.spawn response leaves the host holding a live PTY the client
   // never named; this is the name it was launched under, so a replay can adopt it.
-  reclaim: { identity?: AgentSessionCreateReclaimIdentity }
+  reclaim: {
+    identity?: AgentSessionCreateReclaimIdentity
+    /** The prompt the launch command could not carry, so a reclaimed PTY still gets it. */
+    owedLaunchPrompt?: string
+    /** The draft the launch command could not carry, so a replay still tells the caller. */
+    draftNotCarried?: true
+  }
 }
 
 export type PtyForegroundAgentRefresh = {

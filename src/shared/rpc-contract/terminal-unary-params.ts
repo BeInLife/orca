@@ -105,9 +105,6 @@ export const TerminalSend = TerminalHandle.extend({
   interrupt: z.unknown().optional(),
   // Why: older hosts strip this optional intent and retain their direct-send behavior.
   agentPrompt: z.literal(true).optional(),
-  // Delivers `text` as the agent's launch prompt through the host's writer once its TUI is ready.
-  // Sent only after a host reported `startupPromptDeferred`, which an older host never does.
-  launchPrompt: z.literal(true).optional(),
   // Why: waiting observes the same prompt receipt; it never authorizes a second write.
   waitSubmitMs: z.number().int().min(0).max(3_600_000).optional(),
   resolvedLaunchDraft: z
@@ -141,9 +138,12 @@ export const TerminalViewport = z.object({
 })
 
 export const TerminalWait = TerminalHandle.extend({
-  for: z.custom<'exit' | 'tui-idle'>((value) => value === 'exit' || value === 'tui-idle', {
-    message: 'Invalid --for value. Supported: exit, tui-idle'
-  }),
+  // `launch-prompt` is client-internal: it reads how a host-owned launch prompt delivery ended,
+  // and is asked only of a host whose create replied that one is pending.
+  for: z.custom<'exit' | 'tui-idle' | 'launch-prompt'>(
+    (value) => value === 'exit' || value === 'tui-idle' || value === 'launch-prompt',
+    { message: 'Invalid --for value. Supported: exit, tui-idle' }
+  ),
   timeoutMs: OptionalFiniteNumber
 })
 

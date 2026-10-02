@@ -17,6 +17,4 @@ export type RuntimeTerminalCreate = {
   isReattach?: true
   /** Spawn process identity for host-internal ownership proof. */
   processId?: number
-  /** The requested startup prompt is not in the launch command; the caller delivers it after ready. */
-  startupPromptDeferred?: true
 }

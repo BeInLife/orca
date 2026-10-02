@@ -6,14 +6,15 @@ import {
 import { createWebRuntimeSessionTerminalResult } from './web-runtime-terminal-create-operation'
 import { toWebTerminalSurfaceTabId } from './web-terminal-surface-id'
 import { callRuntimeRpc } from './runtime-rpc-client'
-import type { RuntimeTerminalSend } from '../../../shared/runtime-types'
 import type {
   CreateWebRuntimeSessionTerminalArgs,
   WebRuntimeTerminalCreateOutcome
 } from './web-runtime-session-types'
 
-// Why: the host waits up to 60 s for the agent's TUI before it writes, then for the paste to ingest.
-const LAUNCH_PROMPT_DELIVERY_TIMEOUT_MS = 90_000
+// Why: the host's own delivery ends within 60 s of readiness plus the paste's ingest; this only
+// bounds how long one observation may sit on a dead connection before it is asked again.
+const LAUNCH_PROMPT_OBSERVE_TIMEOUT_MS = 120_000
+const LAUNCH_PROMPT_OBSERVE_ATTEMPTS = 3
 
 export async function createWebRuntimeSessionTerminal(
   args: CreateWebRuntimeSessionTerminalArgs
@@ -22,35 +23,71 @@ export async function createWebRuntimeSessionTerminal(
 }
 
 /**
- * Creates a host agent terminal with its prompt, letting the host start the agent clean when its
- * command line cannot carry the prompt, then has the host's own writer deliver it once ready.
+ * Creates a host agent terminal with its prompt. The host decides whether the launch command can
+ * carry it; when it cannot, the host delivers it itself and this only watches how that ends.
+ * `promptDelivered` settles after the terminal exists: true, false, or null when the outcome
+ * could not be read.
  */
 export async function createWebRuntimeAgentSessionTerminalWithPrompt(
-  args: CreateWebRuntimeSessionTerminalArgs & { prompt: string }
-): Promise<{ outcome: WebRuntimeTerminalCreateOutcome; promptDelivered: boolean }> {
-  const created = await createWebRuntimeSessionTerminalResult({
-    ...args,
-    deferOversizedPrompt: true
-  })
+  args: CreateWebRuntimeSessionTerminalArgs & { agent: TuiAgent; prompt: string }
+): Promise<{
+  outcome: WebRuntimeTerminalCreateOutcome
+  promptDelivered: Promise<boolean | null>
+}> {
+  const created = await createWebRuntimeSessionTerminalResult(args)
   if (created.outcome.status === 'failed') {
-    return { outcome: created.outcome, promptDelivered: false }
+    return { outcome: created.outcome, promptDelivered: Promise.resolve(false) }
   }
-  const deferred = created.deferredLaunchPrompt
-  if (!deferred) {
-    return { outcome: created.outcome, promptDelivered: true }
+  const followUp = created.launchPromptFollowUp
+  if (followUp?.kind === 'host-delivering') {
+    return {
+      outcome: created.outcome,
+      promptDelivered: observeHostLaunchPrompt(followUp.environmentId, followUp.terminal)
+    }
   }
-  try {
-    // Never reaches a host that predates `launchPrompt`: only newer hosts reply with a deferral.
-    const result = await callRuntimeRpc<{ send: RuntimeTerminalSend }>(
-      { kind: 'environment', environmentId: deferred.environmentId },
-      'terminal.send',
-      { terminal: deferred.terminal, text: args.prompt, launchPrompt: true },
-      { timeoutMs: LAUNCH_PROMPT_DELIVERY_TIMEOUT_MS }
-    )
-    return { outcome: created.outcome, promptDelivered: result.send.accepted === true }
-  } catch {
-    return { outcome: created.outcome, promptDelivered: false }
+  if (followUp?.kind === 'client-paste') {
+    return {
+      outcome: created.outcome,
+      promptDelivered: created.hostTabId
+        ? deliverLaunchPromptToAgentTab({
+            tabId: toWebTerminalSurfaceTabId(created.hostTabId),
+            content: args.prompt,
+            agent: args.agent,
+            submit: true,
+            forcePaste: true
+          })
+        : Promise.resolve(false)
+    }
   }
+  return { outcome: created.outcome, promptDelivered: Promise.resolve(true) }
+}
+
+/**
+ * Reads how the host's delivery of a launch prompt ended. Read-only, so a dropped connection is
+ * simply asked again; only a host that replied `pending` is asked, which an older host never does.
+ */
+async function observeHostLaunchPrompt(
+  environmentId: string,
+  terminal: string
+): Promise<boolean | null> {
+  for (let attempt = 0; attempt < LAUNCH_PROMPT_OBSERVE_ATTEMPTS; attempt += 1) {
+    try {
+      const result = await callRuntimeRpc<{ wait?: { launchPrompt?: { outcome?: unknown } } }>(
+        { kind: 'environment', environmentId },
+        'terminal.wait',
+        { terminal, for: 'launch-prompt' },
+        { timeoutMs: LAUNCH_PROMPT_OBSERVE_TIMEOUT_MS }
+      )
+      const outcome = result.wait?.launchPrompt?.outcome
+      if (outcome === 'handed-to-terminal' || outcome === 'not-delivered') {
+        return outcome === 'handed-to-terminal'
+      }
+      return null
+    } catch {
+      // Observing never writes, so asking again cannot deliver the prompt twice.
+    }
+  }
+  return null
 }
 
 export async function createWebRuntimeAgentSessionTerminal(
@@ -80,9 +117,9 @@ export async function createWebRuntimeAgentSessionTerminal(
 }
 
 /**
- * Launch a web-host agent terminal whose draft already rode in on the launch
- * command (argv prefill). No post-ready paste runs for that delivery, so seed
- * the chat-composer copy here once the mirrored host tab id is known.
+ * Launch a web-host agent terminal with a draft. When the draft rode in on the launch command
+ * (argv prefill) no paste runs, so seed the chat-composer copy once the host tab id is known;
+ * when the host's command line could not carry it, paste it unsent once the agent is ready.
  */
 export async function createWebRuntimeAgentSessionTerminalWithLaunchDraft(
   args: CreateWebRuntimeSessionTerminalArgs & {
@@ -91,12 +128,20 @@ export async function createWebRuntimeAgentSessionTerminalWithLaunchDraft(
   }
 ): Promise<WebRuntimeTerminalCreateOutcome> {
   const created = await createWebRuntimeSessionTerminalResult(args)
-  if (created.outcome.status !== 'failed' && created.hostTabId) {
-    seedNativeChatLaunchDraftForAgentTab({
-      tabId: toWebTerminalSurfaceTabId(created.hostTabId),
+  if (created.outcome.status === 'failed' || !created.hostTabId) {
+    return created.outcome
+  }
+  const tabId = toWebTerminalSurfaceTabId(created.hostTabId)
+  if (created.launchPromptFollowUp?.kind === 'client-paste') {
+    void deliverLaunchPromptToAgentTab({
+      tabId,
+      content: args.launchDraft,
       agent: args.agent,
-      text: args.launchDraft
-    })
+      submit: false,
+      forcePaste: true
+    }).catch((error) => console.error('Draft delivery failed after launch', error))
+  } else {
+    seedNativeChatLaunchDraftForAgentTab({ tabId, agent: args.agent, text: args.launchDraft })
   }
   return created.outcome
 }

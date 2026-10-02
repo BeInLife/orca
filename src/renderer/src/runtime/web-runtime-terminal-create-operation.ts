@@ -13,10 +13,12 @@ import {
 import { runRemoteAgentSessionLaunch } from './remote-agent-session-launch'
 import { unwrapRuntimeRpcResult } from './runtime-rpc-client'
 import {
-  deferredLaunchPromptOf,
   freshAgentSessionCreateParams,
-  negotiateLaunchPromptDeferral
+  launchPromptFollowUpOf,
+  legacyAgentCreateTerminalParams,
+  legacyAgentLaunchFor
 } from './web-runtime-agent-session-create-params'
+import type { AgentSessionLaunchPromptReceipt } from '../../../shared/agent-session-host-authority'
 import { toRuntimeWorktreeSelector } from './runtime-worktree-selector'
 import { resolveWebRuntimeSessionEnvironmentId } from './web-runtime-session-workspace-routing'
 import { recordWebSessionFocusIntent } from './web-session-focus-intent'
@@ -86,10 +88,9 @@ export async function createWebRuntimeSessionTerminalResult(
   let hostCreated = false
   let createdTabId: string | undefined
   let createdLeafId: string | undefined
-  let deferredLaunchPrompt: CreatedWebRuntimeSessionTerminal['deferredLaunchPrompt']
+  let launchPromptFollowUp: CreatedWebRuntimeSessionTerminal['launchPromptFollowUp']
   try {
     const agent = args.launchAgent ?? args.agent
-    const deferOversizedPrompt = await negotiateLaunchPromptDeferral(args, environmentId)
     const agentArgsOverride =
       args.agentArgs !== undefined ? args.agentArgs : args.launchConfig?.agentArgs
     if (agent) {
@@ -142,8 +143,7 @@ export async function createWebRuntimeSessionTerminalResult(
                         freshAgentSessionCreateParams(args, {
                           agent,
                           agentArgsOverride,
-                          keyboardOptions: await keyboardOptions(environmentId),
-                          deferOversizedPrompt
+                          keyboardOptions: await keyboardOptions(environmentId)
                         }),
                         clientOperationId
                       ),
@@ -154,8 +154,11 @@ export async function createWebRuntimeSessionTerminalResult(
               )
       const resumeHostAuthorityCapability =
         args.agentSessionKind === 'resume' ? agentResumeHostAuthorityCapability(agent) : undefined
+      const legacyLaunch = legacyAgentLaunchFor(args)
       const created = await runRemoteAgentSessionLaunch<{
         terminal: CreatedAgentTerminalIdentity
+        launchPrompt?: AgentSessionLaunchPromptReceipt
+        clientOwesLaunchPrompt?: boolean
       }>({
         environmentId,
         ...(hostAuthority ? { hostAuthority } : {}),
@@ -165,25 +168,7 @@ export async function createWebRuntimeSessionTerminalResult(
         legacy: async () => {
           const response = await callEnvironment({
             method: 'session.tabs.createTerminal',
-            params: {
-              worktree: toRuntimeWorktreeSelector(args.worktreeId),
-              afterTabId: args.afterTabId ? toHostSessionTabId(args.afterTabId) : undefined,
-              targetGroupId: args.targetGroupId,
-              command: args.command,
-              cwd: args.cwd,
-              ...(args.env ? { env: args.env } : {}),
-              ...(args.envToDelete ? { envToDelete: args.envToDelete } : {}),
-              startupCommandDelivery: args.startupCommandDelivery,
-              ...(args.launchConfig ? { launchConfig: args.launchConfig } : {}),
-              ...(args.launchToken ? { launchToken: args.launchToken } : {}),
-              ...(args.agent ? { agent: args.agent } : {}),
-              ...(args.launchAgent ? { launchAgent: args.launchAgent } : {}),
-              ...(args.viewMode ? { viewMode: args.viewMode } : {}),
-              // Why: old hosts understand activate:false; new hosts use select/navigation for caller-local focus.
-              activate: false,
-              select: args.activate !== false,
-              navigation: 'caller'
-            },
+            params: legacyAgentCreateTerminalParams(args, legacyLaunch),
             timeoutMs: 15_000
           })
           const legacyCreated = unwrapRuntimeRpcResult(
@@ -194,12 +179,18 @@ export async function createWebRuntimeSessionTerminalResult(
             terminal: {
               tabId: legacyCreated.tab.id,
               leafId: legacyCreated.tab.leafId
-            }
+            },
+            clientOwesLaunchPrompt: legacyLaunch.clientOwesLaunchPrompt
           }
         }
       })
       hostCreated = true
-      deferredLaunchPrompt = deferredLaunchPromptOf(environmentId, created.terminal)
+      launchPromptFollowUp = launchPromptFollowUpOf(
+        environmentId,
+        created.terminal,
+        created.launchPrompt,
+        created.clientOwesLaunchPrompt === true
+      )
       createdTabId = created.terminal.tabId
       createdLeafId = legacyAlreadyPlacedInGroup
         ? created.terminal.leafId
@@ -285,7 +276,7 @@ export async function createWebRuntimeSessionTerminalResult(
     return {
       outcome: { status: 'created' },
       ...(createdTabId ? { hostTabId: createdTabId } : {}),
-      ...(deferredLaunchPrompt ? { deferredLaunchPrompt } : {})
+      ...(launchPromptFollowUp ? { launchPromptFollowUp } : {})
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -311,7 +302,7 @@ export async function createWebRuntimeSessionTerminalResult(
     return {
       outcome: hostCreated ? { status: 'created' } : { status: 'failed', message },
       ...(createdTabId ? { hostTabId: createdTabId } : {}),
-      ...(deferredLaunchPrompt ? { deferredLaunchPrompt } : {})
+      ...(launchPromptFollowUp ? { launchPromptFollowUp } : {})
     }
   }
 }

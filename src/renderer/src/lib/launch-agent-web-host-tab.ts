@@ -9,6 +9,7 @@ import {
 } from '@/runtime/web-runtime-session'
 import type { AgentStartupPlan } from '@/lib/tui-agent-startup'
 import type { Tab } from '../../../shared/tab-types'
+import type { CreateWebRuntimeSessionTerminalArgs } from '@/runtime/web-runtime-session-types'
 import type { TuiAgent } from '../../../shared/tui-agent'
 import type { AgentPromptDelivery } from '../../../shared/agent-session-host-authority'
 import { translate } from '@/i18n/i18n'
@@ -47,6 +48,8 @@ export function launchAgentInWebHostTab(args: {
   submitPastedPrompt: boolean
   agentArgs?: string | null
   viewMode?: Tab['viewMode']
+  /** The launch without its prompt, for a host route that cannot defer a long one. */
+  legacyCleanLaunch?: CreateWebRuntimeSessionTerminalArgs['legacyCleanLaunch']
   onPromptDelivered?: () => void
 }): Promise<{ delivered: boolean; failureNotified: boolean }> {
   const {
@@ -62,6 +65,7 @@ export function launchAgentInWebHostTab(args: {
     submitPastedPrompt,
     agentArgs,
     viewMode,
+    legacyCleanLaunch,
     onPromptDelivered
   } = args
   const hasPrompt = prompt.length > 0
@@ -131,31 +135,55 @@ export function launchAgentInWebHostTab(args: {
       promptAfterReady: pastePromptAfterReady,
       submitPrompt: submitPastedPrompt,
       forcePromptPaste: true
-    }).then(handleCreation)
+    }).then(({ outcome, promptDelivered }) => {
+      const result = handleCreation({ outcome, promptDelivered })
+      return outcome.status === 'failed' || promptDelivered
+        ? result
+        : notifyPromptNotSent(agent, submitPastedPrompt)
+    })
   }
   if (hasPrompt && promptDelivery === 'draft') {
-    // Why: the draft rode in on the launch command, so no paste runs and
-    // nothing else seeds the chat-composer copy for this host class.
+    // Why: a draft the launch command carried gets no paste, so the create seeds the chat copy;
+    // one the host's command line could not carry is pasted unsent once the agent is ready.
     return createWebRuntimeAgentSessionTerminalWithLaunchDraft({
       ...launch,
       agent,
-      launchDraft: prompt
+      launchDraft: prompt,
+      ...(legacyCleanLaunch ? { legacyCleanLaunch } : {})
     }).then((outcome) => handleCreation({ outcome, promptDelivered: outcome.status === 'created' }))
   }
   if (hasPrompt) {
-    return createWebRuntimeAgentSessionTerminalWithPrompt({ ...launch, prompt }).then(
-      ({ outcome, promptDelivered }) => {
-        const result = handleCreation({ outcome, promptDelivered })
-        if (outcome.status === 'failed' || promptDelivered) {
-          return result
-        }
-        // The host started the agent but its deferred prompt did not land; say so (L5).
-        showPromptNotSentNotice(agent, true)
-        return { delivered: false, failureNotified: true }
+    return createWebRuntimeAgentSessionTerminalWithPrompt({
+      ...launch,
+      agent,
+      prompt,
+      ...(legacyCleanLaunch ? { legacyCleanLaunch } : {})
+    }).then(async ({ outcome, promptDelivered }) => {
+      // The tab shows now; how its prompt delivery ends is reported when it settles.
+      const created = handleCreation({ outcome, promptDelivered: false })
+      if (outcome.status === 'failed') {
+        return created
       }
-    )
+      const delivered = await promptDelivered
+      if (delivered) {
+        onPromptDelivered?.()
+        return { delivered: true, failureNotified: false }
+      }
+      // Unknown (the outcome could not be read) is not reported as a failure it may not be.
+      return delivered === false
+        ? notifyPromptNotSent(agent, true)
+        : { delivered: false, failureNotified: false }
+    })
   }
   return createWebRuntimeSessionTerminal(launch).then((outcome) =>
     handleCreation({ outcome, promptDelivered: false })
   )
+}
+
+function notifyPromptNotSent(
+  agent: TuiAgent,
+  submitted: boolean
+): { delivered: false; failureNotified: true } {
+  showPromptNotSentNotice(agent, submitted)
+  return { delivered: false, failureNotified: true }
 }

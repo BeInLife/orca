@@ -131,12 +131,6 @@ export type RuntimeCreateAgentSessionRequest = {
   agent: TuiAgent
   prompt?: string
   promptDelivery?: AgentPromptDelivery
-  /**
-   * The caller delivers a prompt the host's launch command cannot carry, so the host starts the
-   * agent clean and reports `terminal.startupPromptDeferred`. Hosts without
-   * `terminal.quick-commands.long-prompts.v1` refuse the field (the schema is strict).
-   */
-  deferOversizedPrompt?: true
   /** Explicit client override. Omission keeps launch defaults host-owned. */
   agentArgs?: string | null
   launchPreferences?: AgentLaunchPreferences
@@ -149,7 +143,20 @@ export type RuntimeCreateAgentSessionRequest = {
 export type RuntimeCreateAgentSessionResult = {
   terminal: RuntimeTerminalCreate
   disposition: 'created' | 'replayed'
+  /** Present only when the launch command did not carry `prompt`; older hosts never send it. */
+  launchPrompt?: AgentSessionLaunchPromptReceipt
 }
+
+/** What became of a create's prompt that its launch command could not carry. */
+export type AgentSessionLaunchPromptReceipt =
+  /** The host writes it into the agent once its TUI is ready; `terminal.wait` with
+   *  `for: 'launch-prompt'` reports how that ended. */
+  | { outcome: 'pending' }
+  /** The host does not write it — a draft stays unsent text — so the caller pastes it. */
+  | { outcome: 'not-delivered' }
+
+/** How a host-owned launch prompt delivery ended, in `agent.launch`'s receipt vocabulary. */
+export type AgentSessionLaunchPromptDisposal = { outcome: 'handed-to-terminal' | 'not-delivered' }
 
 export type RuntimeAgentSessionRpcCaller = {
   clientId?: string
