@@ -16,7 +16,7 @@
  */
 
 import type { TuiAgent } from '../../../shared/tui-agent'
-import { structuredWorkerAgent } from '../structured-worker-authority'
+import { structuredWorkerAgent, structuredWorkerSessionId } from '../structured-worker-authority'
 import { structuredWorkerAddressable } from '../structured-worker-custody'
 import {
   STRUCTURED_WORKER_INCARNATION_PREFIX,
@@ -55,7 +55,9 @@ export function listAddressableStructuredWorkers(
         return []
       }
       seen.add(identity.sessionId)
-      return structuredWorkerAddressable(db, identity.sessionId, row) === true ? [identity] : []
+      return structuredWorkerAddressable(db, structuredWorkerSessionId(identity), row) === true
+        ? [identity]
+        : []
     })
     .map((identity) => ({
       handle: identity.handle,

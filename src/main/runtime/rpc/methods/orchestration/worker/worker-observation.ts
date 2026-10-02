@@ -10,6 +10,7 @@ import {
   resolveStructuredWorkerForDispatch
 } from '../../orchestration-structured-worker-lifecycle'
 import { structuredWorkerAddressable } from '../../../../structured-worker-custody'
+import { structuredWorkerSessionId } from '../../../../structured-worker-authority'
 import type {
   DispatchContextRow,
   FederatedDispatchRow,
@@ -59,7 +60,7 @@ export async function inspectWorkerTerminal(
     const observation = observeStructuredWorker(structured)
     const addressable = structuredWorkerAddressable(
       db,
-      structured.sessionId,
+      structuredWorkerSessionId(structured),
       db.getWorkerTerminalResourceByHandle?.(structured.handle)
     )
     return {
