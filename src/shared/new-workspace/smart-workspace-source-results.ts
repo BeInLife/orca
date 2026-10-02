@@ -223,7 +223,7 @@ export function buildSmartWorkspaceSourceRows({
   mode,
   resultLimit,
   value,
-  youtrackIssue = null
+  youtrackIssues = []
 }: {
   branches: BaseRefSearchResult[]
   githubItems: GitHubWorkItem[]
@@ -240,8 +240,8 @@ export function buildSmartWorkspaceSourceRows({
   mode: SmartNameMode
   resultLimit: number
   value: string
-  /** A YouTrack issue the typed ID or URL resolved to; only confirmed issues get a row. */
-  youtrackIssue?: YouTrackIssue | null
+  /** YouTrack issues confirmed for the typed ID, URL, or ID prefix. */
+  youtrackIssues?: YouTrackIssue[]
 }): SmartWorkspaceSourceRow[] {
   // Why: a pasted issue URL resolves to exactly one issue — every other source is noise.
   if (jiraIntent) {
@@ -274,12 +274,14 @@ export function buildSmartWorkspaceSourceRows({
   }
   const trimmed = value.trim()
   const nextRows: SmartWorkspaceSourceRow[] = []
-  if (youtrackIssue && mode === 'smart') {
-    nextRows.push({
-      kind: 'youtrack',
-      value: `youtrack-${youtrackIssue.idReadable}`,
-      issue: youtrackIssue
-    })
+  if (mode === 'smart') {
+    nextRows.push(
+      ...youtrackIssues.map((issue) => ({
+        kind: 'youtrack' as const,
+        value: `youtrack-${issue.idReadable}`,
+        issue
+      }))
+    )
   }
   if (trimmed && mode === 'smart') {
     // Why: stable cmdk value — embedding the query remounted the row every keystroke.

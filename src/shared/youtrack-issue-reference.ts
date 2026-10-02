@@ -24,3 +24,11 @@ export function parseYouTrackIssueReference(value: string, baseUrl: string | nul
     return null
   }
 }
+
+const ID_PREFIX_RE = /^[A-Za-z][A-Za-z0-9_]*-\d*$/
+
+/** Reads a typed ID prefix ("proj-", "proj-8") used to suggest matching issues. */
+export function parseYouTrackIssueIdPrefix(value: string): string | null {
+  const trimmed = value.trim()
+  return ID_PREFIX_RE.test(trimmed) ? trimmed.toUpperCase() : null
+}
