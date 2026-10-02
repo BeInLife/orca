@@ -25,7 +25,8 @@ export async function awaitChatTakesTurn(
   const dispose = host.subscribeStatus({
     id: `worker-start-readiness:${randomUUID()}`,
     emit: (event) => {
-      // As the mail lane's idle edge: a working or attention status cannot open the gate.
+      // Working and attention edges are dropped as the mail lane drops them: a turn that ends behind
+      // an unanswered send is followed by an idle edge, so this only waits out the user's own send.
       if (
         event.type !== 'status' ||
         (event.session.sessionId === sessionId &&
