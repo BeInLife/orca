@@ -10,6 +10,7 @@ import type {
 import { useJiraSourceConnection } from './use-jira-source-connection'
 import { useJiraUrlSource } from './use-jira-url-source'
 import { useLinearSourceConnection } from './use-linear-source-connection'
+import { useYouTrackIssueReference } from '@/components/youtrack/use-youtrack-issue-reference'
 import { useSmartWorkspaceFieldAvailability } from './use-smart-workspace-field-availability'
 import { useWorkItemSourceState } from './use-work-item-source-state'
 import { useJiraComposerProject } from './use-jira-composer-project'
@@ -162,6 +163,10 @@ export function useWorkItemSourceFoundation(props: NormalizedWorkItemSourceSearc
     sourceContext: jiraSourceContext,
     connection: jiraConnection
   })
+  const youtrackIssue = useYouTrackIssueReference(
+    value,
+    !disabled && !textOnly && state.mode === 'smart' && !sourceSelected
+  )
   const jiraSourceConnected = jiraConnectionStatus?.connected === true
   const jiraProject = useJiraComposerProject(
     selectedRepo,
@@ -214,6 +219,7 @@ export function useWorkItemSourceFoundation(props: NormalizedWorkItemSourceSearc
     jiraSource,
     jiraSourceConnected,
     ...jiraProject,
+    youtrackIssue,
     showJiraSiteContext,
     jiraStatusId,
     linearStatusId

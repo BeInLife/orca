@@ -9,6 +9,7 @@ import { useWorkItemSourceSearch } from './use-work-item-source-search'
 import { useSmartWorkspaceFieldFocusControls } from './use-smart-workspace-field-focus-controls'
 import { useSmartWorkspaceNameFieldActions } from './use-smart-workspace-name-field-actions'
 import { getSmartWorkspaceNameFieldCopy } from './smart-workspace-name-field-copy'
+import { useYouTrackStore } from '@/components/youtrack/youtrack-store'
 
 export function useSmartWorkspaceNameFieldController(props: SmartWorkspaceNameFieldProps) {
   const search = useWorkItemSourceSearch({
@@ -76,9 +77,11 @@ export function useSmartWorkspaceNameFieldController(props: SmartWorkspaceNameFi
     allowCrossRepoProjectAdd: props.allowCrossRepoProjectAdd ?? true
   }
   const actions = useSmartWorkspaceNameFieldActions(foundation, { ...search, activeEmojiShortcode })
+  const youtrackConnected = useYouTrackStore((state) => state.status.connected)
   const copy = getSmartWorkspaceNameFieldCopy({
     ...search,
-    disabledPlaceholder: props.disabledPlaceholder
+    disabledPlaceholder: props.disabledPlaceholder,
+    youtrackConnected
   })
   return {
     ...foundation,
