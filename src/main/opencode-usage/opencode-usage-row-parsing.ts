@@ -81,7 +81,8 @@ export function parseOpenCodeUsageRow(row: OpenCodeUsageRow): OpenCodeUsageParse
   const outputTokens = ensureNumber(tokens.output)
   const reasoningOutputTokens = ensureNumber(tokens.reasoning)
   // OpenCode reports uncached input separately; Orca includes both cache buckets in input.
-  const cachedInputTokens = ensureNumber(cache?.read) + ensureNumber(cache?.write)
+  const cacheWriteInputTokens = ensureNumber(cache?.write)
+  const cachedInputTokens = ensureNumber(cache?.read) + cacheWriteInputTokens
   const inputTokens = uncachedInputTokens + cachedInputTokens
   const totalTokens = Math.max(
     ensureNumber(tokens.total),
@@ -105,6 +106,7 @@ export function parseOpenCodeUsageRow(row: OpenCodeUsageRow): OpenCodeUsageParse
     estimatedCostUsd: ensureNumber(data.cost) > 0 ? ensureNumber(data.cost) : null,
     inputTokens,
     cachedInputTokens,
+    cacheWriteInputTokens,
     outputTokens,
     reasoningOutputTokens,
     totalTokens

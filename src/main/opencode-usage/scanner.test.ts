@@ -129,6 +129,7 @@ describe('parseOpenCodeUsageRow', () => {
       estimatedCostUsd: 0.0123,
       inputTokens: 1425,
       cachedInputTokens: 425,
+      cacheWriteInputTokens: 25,
       outputTokens: 250,
       reasoningOutputTokens: 100,
       totalTokens: 1775
