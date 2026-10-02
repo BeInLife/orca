@@ -38,7 +38,10 @@ export type YouTrackState = {
 /** A custom field rendered as plain text; state/assignee are also lifted onto the issue. */
 export type YouTrackFieldValue = {
   name: string
+  /** Display text. */
   value: string | null
+  /** Option names / user logins, or the plain text an input edits. */
+  raw: string[]
 }
 
 export type YouTrackTag = {
@@ -143,4 +146,72 @@ export type YouTrackAddCommentResult =
 export type YouTrackSetStateArgs = {
   idReadable: string
   option: YouTrackStateOption
+}
+
+export type YouTrackProjectSummary = {
+  id: string
+  shortName: string
+  name: string
+}
+
+export type YouTrackProjectsResult =
+  | { ok: true; projects: YouTrackProjectSummary[] }
+  | { ok: false; error: string }
+
+/** How a field is edited: pick from options, or type a value. */
+export type YouTrackFieldKind =
+  | 'enum'
+  | 'user'
+  | 'version'
+  | 'build'
+  | 'owned'
+  | 'state'
+  | 'string'
+  | 'integer'
+  | 'float'
+  | 'date'
+  | 'datetime'
+  | 'period'
+  | 'text'
+  | 'unknown'
+
+export type YouTrackFieldOption = {
+  /** Value sent back on write: the option name, or a user's login. */
+  value: string
+  label: string
+}
+
+export type YouTrackFieldSchema = {
+  name: string
+  kind: YouTrackFieldKind
+  multi: boolean
+  required: boolean
+  /** Text YouTrack shows for an empty value, e.g. "Unassigned". */
+  emptyText: string | null
+  options: YouTrackFieldOption[]
+  /** Raw values YouTrack fills in when the field is omitted on create. */
+  defaults: string[]
+}
+
+export type YouTrackProjectFieldsResult =
+  | { ok: true; fields: YouTrackFieldSchema[] }
+  | { ok: false; error: string }
+
+/** A field write: option values / logins, or one typed string; empty clears the field. */
+export type YouTrackFieldInput = {
+  name: string
+  values: string[]
+}
+
+export type YouTrackUpdateFieldArgs = {
+  idReadable: string
+  projectId: string
+  field: YouTrackFieldInput
+}
+
+export type YouTrackCreateIssueArgs = {
+  projectId: string
+  summary: string
+  description?: string
+  fields: YouTrackFieldInput[]
 }

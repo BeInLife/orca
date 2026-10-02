@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { LoaderCircle, LogOut, RefreshCw } from 'lucide-react'
+import { LoaderCircle, LogOut, Plus, RefreshCw } from 'lucide-react'
 import { YouTrackIcon } from '@/components/icons/YouTrackIcon'
 import { Button } from '@/components/ui/button'
 import {
@@ -15,6 +15,7 @@ import { translate } from '@/i18n/i18n'
 import { cn } from '@/lib/utils'
 import type { YouTrackIssuePreset } from '../../../../shared/youtrack-types'
 import { YouTrackConnectDialog } from './YouTrackConnectDialog'
+import { YouTrackCreateIssueDialog } from './YouTrackCreateIssueDialog'
 import { YouTrackIssueList } from './YouTrackIssueList'
 import { YouTrackIssueSheet } from './YouTrackIssueSheet'
 import { startYouTrackIssueWorkspace } from './youtrack-workspace'
@@ -38,7 +39,10 @@ function YouTrackToolbar(): React.JSX.Element {
   const setQuery = useYouTrackStore((s) => s.setQuery)
   const loadIssues = useYouTrackStore((s) => s.loadIssues)
   const disconnect = useYouTrackStore((s) => s.disconnect)
+  const addIssue = useYouTrackStore((s) => s.addIssue)
+  const selectIssue = useYouTrackStore((s) => s.selectIssue)
   const [queryDraft, setQueryDraft] = useState(query)
+  const [createOpen, setCreateOpen] = useState(false)
 
   useEffect(() => {
     setQueryDraft(query)
@@ -76,6 +80,18 @@ function YouTrackToolbar(): React.JSX.Element {
           )}
         />
       </form>
+      <Button type="button" size="sm" onClick={() => setCreateOpen(true)}>
+        <Plus className="size-3.5" />
+        {translate('youtrack.toolbar.newIssue', 'New issue')}
+      </Button>
+      <YouTrackCreateIssueDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={(issue) => {
+          addIssue(issue)
+          selectIssue(issue.idReadable)
+        }}
+      />
       <Button
         type="button"
         variant="ghost"

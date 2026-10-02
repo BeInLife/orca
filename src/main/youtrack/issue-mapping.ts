@@ -119,6 +119,29 @@ function formatFieldValue(fieldType: string, value: unknown): string | null {
   return String(value)
 }
 
+/** Editor-facing values: option names / user logins, or the plain text an input edits. */
+function rawFieldValues(fieldType: string, value: unknown): string[] {
+  if (value === null || value === undefined) {
+    return []
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => rawFieldValues(fieldType, entry))
+  }
+  const record = asRecord(value)
+  if (record) {
+    const raw =
+      asString(record.login) ??
+      asString(record.name) ??
+      asString(record.presentation) ??
+      (typeof record.text === 'string' ? record.text : null)
+    return raw === null ? [] : [raw]
+  }
+  if (typeof value === 'number' && fieldType.startsWith('Date')) {
+    return [new Date(value).toISOString().slice(0, 10)]
+  }
+  return [String(value)]
+}
+
 /** Maps a link label to its blocking direction; YouTrack's default "Depend" type reads "depends on" / "is required for". */
 function classifyLinkLabel(label: string): YouTrackLinkGroup['blocking'] {
   if (/depends on|blocked by/i.test(label)) {
@@ -209,6 +232,11 @@ export function toYouTrackIssue(raw: unknown, baseUrl: string): YouTrackIssue | 
     const fieldType = String(fieldRecord.$type ?? '')
     const name = asString(fieldRecord.name) ?? ''
     const value = asRecord(fieldRecord.value)
+    fields.push({
+      name,
+      value: formatFieldValue(fieldType, fieldRecord.value),
+      raw: rawFieldValues(fieldType, fieldRecord.value)
+    })
     if (!stateFieldName && STATE_FIELD_TYPES.has(fieldType)) {
       stateFieldName = name
       state = value
@@ -218,21 +246,13 @@ export function toYouTrackIssue(raw: unknown, baseUrl: string): YouTrackIssue | 
             color: toColor(value.color)
           }
         : null
-      continue
-    }
-    if (!assignee && fieldType === 'SingleUserIssueCustomField' && /assignee/i.test(name)) {
+    } else if (!assignee && fieldType === 'SingleUserIssueCustomField' && /assignee/i.test(name)) {
       assignee = toYouTrackUser(value, baseUrl)
-      continue
-    }
-    if (priority === null && /^priority$/i.test(name)) {
+    } else if (priority === null && /^priority$/i.test(name)) {
       priority = formatFieldValue(fieldType, fieldRecord.value)
-      continue
-    }
-    if (type === null && /^type$/i.test(name)) {
+    } else if (type === null && /^type$/i.test(name)) {
       type = formatFieldValue(fieldType, fieldRecord.value)
-      continue
     }
-    fields.push({ name, value: formatFieldValue(fieldType, fieldRecord.value) })
   }
 
   const links = toLinkGroups(record.links)

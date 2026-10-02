@@ -108,57 +108,6 @@ export function YouTrackLinksSection({
   )
 }
 
-export function YouTrackFieldsAside({ issue }: { issue: YouTrackIssue }): React.JSX.Element {
-  const rows: { name: string; value: string | null }[] = [
-    {
-      name: translate('youtrack.detail.project', 'Project'),
-      value: issue.project.name || issue.project.shortName
-    },
-    {
-      name: translate('youtrack.detail.assignee', 'Assignee'),
-      value: issue.assignee?.fullName ?? null
-    },
-    {
-      name: translate('youtrack.detail.reporter', 'Reporter'),
-      value: issue.reporter?.fullName ?? null
-    },
-    { name: translate('youtrack.detail.priority', 'Priority'), value: issue.priority },
-    { name: translate('youtrack.detail.type', 'Type'), value: issue.type },
-    ...issue.fields
-  ]
-  return (
-    <aside className="border-t border-border/50 bg-muted/20 px-3 py-3 xl:border-l xl:border-t-0">
-      <dl className="grid gap-2">
-        {rows.map((row) => (
-          <div key={row.name} className="min-w-0">
-            <dt className="text-[11px] text-muted-foreground">{row.name}</dt>
-            <dd className="truncate text-[12px] text-foreground" title={row.value ?? undefined}>
-              {row.value ?? '—'}
-            </dd>
-          </div>
-        ))}
-        {issue.tags.length > 0 ? (
-          <div className="min-w-0">
-            <dt className="text-[11px] text-muted-foreground">
-              {translate('youtrack.detail.tags', 'Tags')}
-            </dt>
-            <dd className="mt-1 flex flex-wrap gap-1">
-              {issue.tags.map((tag) => (
-                <span
-                  key={tag.name}
-                  className="rounded-md border border-border/50 bg-muted/40 px-1.5 py-0.5 text-[11px] text-foreground"
-                >
-                  {tag.name}
-                </span>
-              ))}
-            </dd>
-          </div>
-        ) : null}
-      </dl>
-    </aside>
-  )
-}
-
 export function YouTrackCommentsSection({
   comments,
   loading,

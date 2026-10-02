@@ -81,8 +81,12 @@ describe('toYouTrackIssue', () => {
       resolved: false
     })
     expect(issue?.fields).toEqual([
-      { name: 'Due Date', value: '2026-10-31' },
-      { name: 'Fix versions', value: '1.0, 1.1' }
+      { name: 'Stage', value: 'In Progress', raw: ['In Progress'] },
+      { name: 'Assignee', value: 'Me', raw: ['me'] },
+      { name: 'Priority', value: 'Major', raw: ['Major'] },
+      { name: 'Type', value: 'Bug', raw: ['Bug'] },
+      { name: 'Due Date', value: '2026-10-31', raw: ['2026-10-31'] },
+      { name: 'Fix versions', value: '1.0, 1.1', raw: ['1.0', '1.1'] }
     ])
     expect(issue?.reporter?.avatarUrl).toBe('https://yt.example.com/hub/avatar/1')
   })

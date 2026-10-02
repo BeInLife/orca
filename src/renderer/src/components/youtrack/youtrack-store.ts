@@ -32,6 +32,8 @@ type YouTrackStore = {
   loadIssues: (options?: { force?: boolean }) => Promise<void>
   selectIssue: (idReadable: string | null) => void
   replaceIssue: (issue: YouTrackIssue) => void
+  /** Shows a just-created issue at the top until the next refresh. */
+  addIssue: (issue: YouTrackIssue) => void
 }
 
 function youtrackApi() {
@@ -120,5 +122,10 @@ export const useYouTrackStore = create<YouTrackStore>((set, get) => ({
   replaceIssue: (issue) =>
     set((state) => ({
       issues: state.issues.map((entry) => (entry.idReadable === issue.idReadable ? issue : entry))
+    })),
+
+  addIssue: (issue) =>
+    set((state) => ({
+      issues: [issue, ...state.issues.filter((entry) => entry.idReadable !== issue.idReadable)]
     }))
 }))
