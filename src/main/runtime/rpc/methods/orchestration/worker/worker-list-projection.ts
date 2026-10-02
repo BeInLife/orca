@@ -1,13 +1,13 @@
 import {
   ORCHESTRATION_FLEET_PAGE_MAX,
   projectOrchestrationFleet,
-  type FleetDurableWorker
+  type FleetDurableWorker,
+  type OrchestrationFleetWorker
 } from '../../../../../../shared/orchestration-fleet-projection'
 import { resolveFleetWorkerOutcome } from '../../../../../../shared/orchestration-fleet-outcome-resolution'
 import type { WorkerTerminalListState } from '../../../../orchestration/worker-terminal-ownership'
 import type { OrchestrationDb } from '../../../../orchestration/db'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
-import type { OrchestrationFleetWorker } from '../../../../../../shared/orchestration-fleet-projection'
 import {
   observeResolvedStructuredAssignee,
   resolveStructuredAssignee,
