@@ -1,3 +1,4 @@
+import { findOptionOccurrence } from './command-option-occurrence'
 import { planAgentBinary } from './agent-command-plan'
 export { planAgentBinary } from './agent-command-plan'
 import type { CommandTemplateBackslash } from './commit-message-prompt'
@@ -61,39 +62,6 @@ function planAdditionalAgentArgs(
 }
 
 const DEFAULT_SINGLETON_OPTIONS: readonly (readonly string[])[] = [['--model']]
-
-function matchesOption(token: string, aliases: readonly string[]): boolean {
-  return aliases.some(
-    (alias) =>
-      token === alias ||
-      token.startsWith(`${alias}=`) ||
-      (alias.startsWith('-') &&
-        !alias.startsWith('--') &&
-        token.startsWith(alias) &&
-        token.length > alias.length)
-  )
-}
-
-function findOptionOccurrence(
-  tokens: string[],
-  aliases: readonly string[],
-  stopAtTerminator: boolean
-): { index: number; consumed: number } | null {
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index]
-    if (stopAtTerminator && token === '--') {
-      break
-    }
-    if (!matchesOption(token, aliases)) {
-      continue
-    }
-    const nextToken = tokens[index + 1]
-    const consumesNext =
-      aliases.includes(token) && nextToken !== undefined && !nextToken.startsWith('-')
-    return { index, consumed: consumesNext ? 2 : 1 }
-  }
-  return null
-}
 
 function applyRecipeOptionOverride(args: {
   generatedArgs: string[]

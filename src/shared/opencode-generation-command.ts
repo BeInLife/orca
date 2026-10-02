@@ -1,3 +1,4 @@
+import { findOptionOccurrence } from './command-option-occurrence'
 import type { CommitMessagePlan } from './commit-message-plan'
 
 export function mergeOpenCodeGenerationArgs(
@@ -25,15 +26,19 @@ export function openCodeVariantRetryPlan(
   if (!stderr.includes('Unrecognized flag: --variant in command opencode run')) {
     return null
   }
-  const variantIndex = plan.args.indexOf('--variant')
-  const modelIndex = plan.args.findIndex((arg) => arg === '--model' || arg === '-m')
-  const variant = plan.args[variantIndex + 1]
-  const model = plan.args[modelIndex + 1]
-  if (variantIndex === -1 || modelIndex === -1 || !variant || !model) {
+  const variant = findOptionOccurrence(plan.args, ['--variant'], true)
+  const model = findOptionOccurrence(plan.args, ['--model', '-m'], true)
+  if (!variant?.value || !model?.value) {
     return null
   }
   const args = [...plan.args]
-  args[modelIndex + 1] = `${model.split('#')[0]}#${variant}`
-  args.splice(variantIndex, 2)
+  const replacement = `${model.value.split('#')[0]}#${variant.value}`
+  if (model.consumed === 2) {
+    args[model.index + 1] = replacement
+  } else {
+    const token = args[model.index]
+    args[model.index] = `${token.slice(0, token.length - model.value.length)}${replacement}`
+  }
+  args.splice(variant.index, variant.consumed)
   return { ...plan, args }
 }
