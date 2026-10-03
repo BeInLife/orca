@@ -19,7 +19,7 @@ import {
   updateField
 } from '../youtrack/issue-mutations'
 import { isRawRecord } from '../youtrack/raw-record'
-import { setYouTrackNetworkProxySettingsResolver } from '../youtrack/insecure-tls-session'
+import { installYouTrackInsecureTlsFetch } from '../host/electron-youtrack-insecure-tls'
 import type { NetworkProxySettings } from '../../shared/network-proxy'
 import { isYouTrackIssueId } from '../../shared/youtrack-issue-reference'
 import {
@@ -73,7 +73,7 @@ const invalidIssue = { ok: false, error: 'A valid YouTrack issue id is required.
 export function registerYouTrackHandlers(
   resolveNetworkProxySettings: () => NetworkProxySettings
 ): void {
-  setYouTrackNetworkProxySettingsResolver(resolveNetworkProxySettings)
+  installYouTrackInsecureTlsFetch(resolveNetworkProxySettings)
   ipcMain.handle('youtrack:status', () => getStatus())
 
   ipcMain.handle('youtrack:testConnection', () => testConnection())

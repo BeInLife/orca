@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { translate } from '@/i18n/i18n'
 import type {
   YouTrackConnectionStatus,
   YouTrackConnectResult,
@@ -63,7 +64,13 @@ export const useYouTrackStore = create<YouTrackStore>((set, get) => ({
   connect: async (baseUrl, token, allowInsecureTls) => {
     const api = youtrackApi()
     if (!api) {
-      return { ok: false, error: 'YouTrack is only available in the desktop app.' }
+      return {
+        ok: false,
+        error: translate(
+          'youtrack.store.desktopOnly',
+          'YouTrack is only available in the desktop app.'
+        )
+      }
     }
     const result = await api.connect({ baseUrl, token, allowInsecureTls })
     if (result.ok) {

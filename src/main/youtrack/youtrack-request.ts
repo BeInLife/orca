@@ -14,6 +14,19 @@ export class YouTrackApiError extends Error {
   }
 }
 
+/** Fetch that trusts `hostname`'s certificate as-is; only the desktop host can provide one. */
+export type YouTrackInsecureTlsFetch = (
+  hostname: string,
+  url: string,
+  init: RequestInit
+) => Promise<Response>
+
+let insecureTlsFetch: YouTrackInsecureTlsFetch | null = null
+
+export function setYouTrackInsecureTlsFetch(fetcher: YouTrackInsecureTlsFetch | null): void {
+  insecureTlsFetch = fetcher
+}
+
 export type YouTrackCredentials = {
   baseUrl: string
   token: string
@@ -89,10 +102,10 @@ export async function youtrackRequest(
   let response: Response
   try {
     if (credentials.allowInsecureTls) {
-      // Lazy: keeps electron out of the module graph unless the user opted in.
-      const { getInsecureTlsSession } = await import('./insecure-tls-session')
-      const insecureSession = await getInsecureTlsSession(new URL(url).hostname)
-      response = await insecureSession.fetch(url, requestInit)
+      if (!insecureTlsFetch) {
+        throw new Error('Skipping certificate verification needs the Orca desktop app')
+      }
+      response = await insecureTlsFetch(new URL(url).hostname, url, requestInit)
     } else {
       response = await httpClient.fetch(url, requestInit)
     }
