@@ -1,20 +1,35 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { getRequiredStringFlag, getRequiredStringFlagAllowingEmpty } from './flags'
 import { RuntimeClientError } from './runtime-client'
 
 export type BodyFlagLimit = { maxChars: number; tooLarge: () => RuntimeClientError }
 
-async function readBodyFile(path: string, cwd: string): Promise<string> {
+// Why: UTF-8 spends at most 4 bytes per character, so more bytes than this must be over the cap.
+function maxBodyBytes(limit: BodyFlagLimit): number {
+  return limit.maxChars * 4
+}
+
+async function readBodyFile(path: string, cwd: string, limit: BodyFlagLimit): Promise<string> {
   if (path !== '-') {
-    return await readFile(isAbsolute(path) ? path : join(cwd, path), 'utf8')
+    const filePath = isAbsolute(path) ? path : join(cwd, path)
+    if ((await stat(filePath)).size > maxBodyBytes(limit)) {
+      throw limit.tooLarge()
+    }
+    return await readFile(filePath, 'utf8')
   }
   if (process.stdin.isTTY) {
     throw new RuntimeClientError('invalid_argument', 'stdin body requested but stdin is a TTY')
   }
   const chunks: Buffer[] = []
+  let bytes = 0
   for await (const chunk of process.stdin) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)))
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))
+    bytes += buffer.length
+    if (bytes > maxBodyBytes(limit)) {
+      throw limit.tooLarge()
+    }
+    chunks.push(buffer)
   }
   return Buffer.concat(chunks).toString('utf8')
 }
@@ -38,7 +53,7 @@ export async function readBodyFlags(
   }
   const body = hasBody
     ? getRequiredStringFlagAllowingEmpty(flags, 'body')
-    : await readBodyFile(getRequiredStringFlag(flags, 'body-file'), cwd)
+    : await readBodyFile(getRequiredStringFlag(flags, 'body-file'), cwd, options.limit)
   if (body.length > options.limit.maxChars) {
     throw options.limit.tooLarge()
   }

@@ -34,20 +34,32 @@ export type YouTrackCredentials = {
   allowInsecureTls?: boolean
 }
 
-/** Accepts the address users copy from the browser and returns the instance root. */
-export function normalizeYouTrackBaseUrl(input: string): string {
+function parseYouTrackAddress(input: string): URL {
   const trimmed = input.trim()
-  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
-  const url = new URL(withScheme)
+  const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`)
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {
     throw new Error('unsupported protocol')
   }
-  // Why: self-hosted instances often live under a path prefix (e.g. /youtrack),
-  // so keep the path but drop UI/API suffixes pasted from the address bar.
+  return url
+}
+
+/** Accepts the address users copy from the browser and returns the instance root. */
+export function normalizeYouTrackBaseUrl(input: string): string {
+  const url = parseYouTrackAddress(input)
+  // Why: self-hosted instances often live under a path prefix (e.g. /youtrack), so keep it.
+  // An API path runs to the end; of UI segments only the last is the pasted page.
   const path = url.pathname
-    .replace(/\/(?:api|issues?|dashboard|agiles|projects)(?:\/.*)?$/i, '')
+    .replace(/\/api(?:\/.*)?$/i, '')
+    .replace(/^(.*)\/(?:issues?|dashboard|agiles|projects)(?:\/.*)?$/i, '$1')
     .replace(/\/+$/, '')
   return `${url.origin}${path}`
+}
+
+/** Base URLs to try on connect: the normalized root, then the path exactly as entered. */
+export function youtrackBaseUrlCandidates(input: string): string[] {
+  const url = parseYouTrackAddress(input)
+  const asEntered = `${url.origin}${url.pathname.replace(/\/+$/, '')}`
+  return [...new Set([normalizeYouTrackBaseUrl(input), asEntered])]
 }
 
 async function readYouTrackError(response: Response): Promise<string> {

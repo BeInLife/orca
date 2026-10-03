@@ -31,6 +31,20 @@ function showYouTrackInTasks(): void {
   })
 }
 
+function hostOf(input: string | null): string | null {
+  const trimmed = input?.trim()
+  if (!trimmed) {
+    return null
+  }
+  try {
+    return new URL(
+      /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+    ).host.toLowerCase()
+  } catch {
+    return null
+  }
+}
+
 /** True for plain-HTTP addresses off this machine, where the token would cross the network unencrypted. */
 function sendsTokenInClearText(input: string): boolean {
   try {
@@ -58,7 +72,12 @@ export function YouTrackConnectDialog({
   const [baseUrl, setBaseUrl] = useState(savedBaseUrl ?? '')
   const [token, setToken] = useState('')
   const savedAllowInsecureTls = useYouTrackStore((s) => s.status.allowInsecureTls === true)
-  const [allowInsecureTls, setAllowInsecureTls] = useState(savedAllowInsecureTls)
+  // Why per host: a saved certificate opt-out must never carry over to a different host.
+  const [insecureTlsChoice, setInsecureTlsChoice] = useState(() => ({
+    host: hostOf(savedBaseUrl),
+    allow: savedAllowInsecureTls
+  }))
+  const allowInsecureTls = insecureTlsChoice.allow && insecureTlsChoice.host === hostOf(baseUrl)
   const insecureTlsId = useId()
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -84,7 +103,11 @@ export function YouTrackConnectDialog({
     setSubmitting(true)
     setError(null)
     const result = await connect(baseUrl, token, allowInsecureTls)
-    setSubmitting(false)
+      .catch((reason: unknown) => ({
+        ok: false as const,
+        error: reason instanceof Error ? reason.message : String(reason)
+      }))
+      .finally(() => setSubmitting(false))
     if (!result.ok) {
       setError(result.error)
       return
@@ -188,7 +211,9 @@ export function YouTrackConnectDialog({
             <Checkbox
               id={insecureTlsId}
               checked={allowInsecureTls}
-              onCheckedChange={(checked) => setAllowInsecureTls(checked === true)}
+              onCheckedChange={(checked) =>
+                setInsecureTlsChoice({ host: hostOf(baseUrl), allow: checked === true })
+              }
               disabled={submitting}
               className="mt-0.5"
             />

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { toYouTrackComment, toYouTrackIssue } from './issue-mapping'
-import { normalizeYouTrackBaseUrl } from './youtrack-request'
+import { normalizeYouTrackBaseUrl, youtrackBaseUrlCandidates } from './youtrack-request'
 
 const BASE_URL = 'https://yt.example.com/youtrack'
 
@@ -128,5 +128,18 @@ describe('normalizeYouTrackBaseUrl', () => {
     expect(normalizeYouTrackBaseUrl('https://yt.example.com/api/issues')).toBe(
       'https://yt.example.com'
     )
+    expect(normalizeYouTrackBaseUrl('https://corp.example.com/projects/yt/issue/APP-1')).toBe(
+      'https://corp.example.com/projects/yt'
+    )
+  })
+
+  it('offers the path as entered when trimming could have cut a real mount path', () => {
+    expect(youtrackBaseUrlCandidates('https://corp.example.com/projects/yt')).toEqual([
+      'https://corp.example.com',
+      'https://corp.example.com/projects/yt'
+    ])
+    expect(youtrackBaseUrlCandidates('https://yt.example.com/youtrack/')).toEqual([
+      'https://yt.example.com/youtrack'
+    ])
   })
 })

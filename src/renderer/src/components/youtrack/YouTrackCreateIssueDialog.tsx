@@ -75,13 +75,18 @@ export function YouTrackCreateIssueDialog({
   const [projectId, setProjectId] = useState<string | null>(readLastProject)
   const [summary, setSummary] = useState('')
   const [description, setDescription] = useState('')
-  const [values, setValues] = useState<Record<string, string[]>>({})
+  // Why edits over defaults: a late status load (viewer login) must not wipe what the user typed.
+  const [edits, setEdits] = useState<Record<string, string[]>>({})
   const [showAll, setShowAll] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const summaryId = useId()
   const descriptionId = useId()
   const { fields: schema, error: schemaError } = useYouTrackProjectFields(open ? projectId : null)
+  const values = useMemo(
+    () => ({ ...(schema ? initialValues(schema, viewerLogin) : {}), ...edits }),
+    [schema, viewerLogin, edits]
+  )
 
   useEffect(() => {
     if (!open || projects || !window.api?.youtrack) {
@@ -101,10 +106,6 @@ export function YouTrackCreateIssueDialog({
     })
   }, [open, projects])
 
-  useEffect(() => {
-    setValues(schema ? initialValues(schema, viewerLogin) : {})
-  }, [schema, viewerLogin])
-
   const fields = useMemo(
     () => (schema ?? []).filter((field) => field.kind !== 'state' && isEditableKind(field)),
     [schema]
@@ -123,7 +124,7 @@ export function YouTrackCreateIssueDialog({
     setDescription('')
     setError(null)
     setShowAll(false)
-    setValues(schema ? initialValues(schema, viewerLogin) : {})
+    setEdits({})
   }
 
   const handleSubmit = async (): Promise<void> => {
@@ -182,8 +183,9 @@ export function YouTrackCreateIssueDialog({
               value={projectId ?? undefined}
               onValueChange={(value) => {
                 // Why: Radix's hidden form <select> reports "" before its options mount.
-                if (value) {
+                if (value && value !== projectId) {
                   setProjectId(value)
+                  setEdits({})
                 }
               }}
               disabled={!projects}
@@ -238,14 +240,14 @@ export function YouTrackCreateIssueDialog({
                     <YouTrackOptionPicker
                       field={field}
                       values={values[field.name] ?? []}
-                      onChange={(next) => setValues((prev) => ({ ...prev, [field.name]: next }))}
+                      onChange={(next) => setEdits((prev) => ({ ...prev, [field.name]: next }))}
                     />
                   </div>
                 ) : (
                   <YouTrackScalarInput
                     field={field}
                     value={values[field.name]?.[0] ?? ''}
-                    onChange={(next) => setValues((prev) => ({ ...prev, [field.name]: [next] }))}
+                    onChange={(next) => setEdits((prev) => ({ ...prev, [field.name]: [next] }))}
                   />
                 )}
               </div>

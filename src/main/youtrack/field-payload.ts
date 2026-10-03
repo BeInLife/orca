@@ -97,7 +97,8 @@ const SCALAR_ISSUE_TYPE: Partial<Record<YouTrackFieldKind, string>> = {
   integer: 'SimpleIssueCustomField',
   float: 'SimpleIssueCustomField',
   date: 'DateIssueCustomField',
-  datetime: 'DateIssueCustomField',
+  // Why: YouTrack maps "date and time" fields to SimpleIssueCustomField, unlike date-only ones.
+  datetime: 'SimpleIssueCustomField',
   period: 'PeriodIssueCustomField',
   text: 'TextIssueCustomField'
 }

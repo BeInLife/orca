@@ -39,7 +39,10 @@ export function YouTrackIntegrationCard(): React.JSX.Element {
     }
     setTesting(true)
     setTestResult(null)
-    const result = await api.testConnection()
+    const result = await api.testConnection().catch((reason: unknown) => ({
+      ok: false as const,
+      error: reason instanceof Error ? reason.message : String(reason)
+    }))
     if (!mountedRef.current) {
       return
     }

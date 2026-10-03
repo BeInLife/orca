@@ -30,7 +30,8 @@ import {
 } from './issue-mapping'
 import { activeBundleValues, isRawRecord, type RawRecord } from './raw-record'
 import {
-  normalizeYouTrackBaseUrl,
+  YouTrackApiError,
+  youtrackBaseUrlCandidates,
   youtrackRequest,
   type YouTrackCredentials
 } from './youtrack-request'
@@ -77,9 +78,9 @@ export function getStatus(): YouTrackConnectionStatus {
 }
 
 export async function connect(args: YouTrackConnectArgs): Promise<YouTrackConnectResult> {
-  let baseUrl: string
+  let candidates: string[]
   try {
-    baseUrl = normalizeYouTrackBaseUrl(args.baseUrl)
+    candidates = youtrackBaseUrlCandidates(args.baseUrl)
   } catch {
     return { ok: false, error: 'Enter a valid YouTrack URL.' }
   }
@@ -88,23 +89,32 @@ export async function connect(args: YouTrackConnectArgs): Promise<YouTrackConnec
     return { ok: false, error: 'A permanent token is required.' }
   }
   const allowInsecureTls = args.allowInsecureTls === true
-  try {
-    const raw = await youtrackRequest(
-      { baseUrl, token, allowInsecureTls },
-      `/api/users/me?fields=${VIEWER_FIELDS}`
-    )
-    const viewer = toYouTrackUser(raw, baseUrl)
-    if (!viewer?.login) {
-      return { ok: false, error: 'YouTrack did not return the current user. Check the URL.' }
+  let firstError: string | null = null
+  for (const baseUrl of candidates) {
+    try {
+      const raw = await youtrackRequest(
+        { baseUrl, token, allowInsecureTls },
+        `/api/users/me?fields=${VIEWER_FIELDS}`
+      )
+      const viewer = toYouTrackUser(raw, baseUrl)
+      if (viewer?.login) {
+        saveSite(
+          { version: 1, baseUrl, viewer, ...(allowInsecureTls ? { allowInsecureTls } : {}) },
+          token
+        )
+        return { ok: true, viewer }
+      }
+      firstError ??= 'YouTrack did not return the current user. Check the URL.'
+    } catch (error) {
+      firstError ??= errorMessage(error, 'Could not connect to YouTrack.')
+      // Why: only a wrong path (404) is worth retrying at the next candidate; auth and
+      // TLS failures would repeat against the same host.
+      if (!(error instanceof YouTrackApiError && error.status === 404)) {
+        break
+      }
     }
-    saveSite(
-      { version: 1, baseUrl, viewer, ...(allowInsecureTls ? { allowInsecureTls } : {}) },
-      token
-    )
-    return { ok: true, viewer }
-  } catch (error) {
-    return { ok: false, error: errorMessage(error, 'Could not connect to YouTrack.') }
   }
+  return { ok: false, error: firstError ?? 'Could not connect to YouTrack.' }
 }
 
 /** Re-verifies the saved token; only runs on an explicit user action. */
