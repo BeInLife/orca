@@ -30,7 +30,6 @@ import {
 } from './issue-mapping'
 import { activeBundleValues, isRawRecord, type RawRecord } from './raw-record'
 import {
-  YouTrackApiError,
   youtrackBaseUrlCandidates,
   youtrackRequest,
   type YouTrackCredentials
@@ -106,12 +105,9 @@ export async function connect(args: YouTrackConnectArgs): Promise<YouTrackConnec
       }
       firstError ??= 'YouTrack did not return the current user. Check the URL.'
     } catch (error) {
+      // Why keep going: the trimmed root may be another service (404, or an auth gateway's
+      // 401) while the path as entered is the real instance; report the root's error.
       firstError ??= errorMessage(error, 'Could not connect to YouTrack.')
-      // Why: only a wrong path (404) is worth retrying at the next candidate; auth and
-      // TLS failures would repeat against the same host.
-      if (!(error instanceof YouTrackApiError && error.status === 404)) {
-        break
-      }
     }
   }
   return { ok: false, error: firstError ?? 'Could not connect to YouTrack.' }
