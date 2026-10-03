@@ -135,7 +135,10 @@ export function YouTrackConnectDialog({
               id={baseUrlId}
               value={baseUrl}
               onChange={(event) => setBaseUrl(event.target.value)}
-              placeholder="https://youtrack.example.com"
+              placeholder={translate(
+                'youtrack.connect.baseUrlPlaceholder',
+                'https://youtrack.example.com'
+              )}
               autoFocus
               disabled={submitting}
             />
@@ -157,7 +160,7 @@ export function YouTrackConnectDialog({
               type="password"
               value={token}
               onChange={(event) => setToken(event.target.value)}
-              placeholder="perm:…"
+              placeholder={translate('youtrack.connect.tokenPlaceholder', 'perm:…')}
               disabled={submitting}
             />
             <p className="text-xs text-muted-foreground">

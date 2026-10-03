@@ -28,15 +28,12 @@ vi.mock('../network/proxy-settings', () => ({
   applyProxySettingsToSession: mocks.applyProxySettingsToSession
 }))
 
-const { getInsecureTlsSession, setYouTrackNetworkProxySettingsResolver } =
-  await import('./insecure-tls-session')
+const { getInsecureTlsSession } = await import('./electron-youtrack-insecure-tls')
 
 describe('getInsecureTlsSession', () => {
   it('applies the current Orca proxy settings before every use', async () => {
-    setYouTrackNetworkProxySettingsResolver(() => ({ httpProxyUrl: 'http://proxy.corp:3128' }))
-    await getInsecureTlsSession('yt.corp')
-    setYouTrackNetworkProxySettingsResolver(() => ({ httpProxyUrl: 'http://other:8080' }))
-    await getInsecureTlsSession('yt.corp')
+    await getInsecureTlsSession('yt.corp', { httpProxyUrl: 'http://proxy.corp:3128' })
+    await getInsecureTlsSession('yt.corp', { httpProxyUrl: 'http://other:8080' })
     expect(mocks.applyProxySettingsToSession).toHaveBeenNthCalledWith(1, mocks.fakeSession, {
       httpProxyUrl: 'http://proxy.corp:3128'
     })
@@ -46,7 +43,7 @@ describe('getInsecureTlsSession', () => {
   })
 
   it('relaxes certificate checks for the YouTrack host only', async () => {
-    await getInsecureTlsSession('YT.corp')
+    await getInsecureTlsSession('YT.corp', {})
     expect(mocks.verify('yt.corp')).toBe(0)
     expect(mocks.verify('evil.example.com')).toBe(-3)
   })

@@ -23,9 +23,10 @@ const AUDITED_NON_NET_FETCH_CALLS = new Map<string, number>([
   ['main/jira/authenticated-request.ts', 1],
   // The same injected HttpClient, and the updater's deps.fetch that it is passed as.
   ['main/runtime/agent-state-rules/agent-state-rules-live-update.ts', 2],
-  // Injected HttpClient (as Jira) plus the opt-in self-signed-TLS partition, which
-  // getInsecureTlsSession proxies via applyProxySettingsToSession before every request.
-  ['main/youtrack/youtrack-request.ts', 2]
+  // Injected HttpClient, as Jira.
+  ['main/youtrack/youtrack-request.ts', 1],
+  // Opt-in self-signed-TLS partition, proxied via applyProxySettingsToSession before every request.
+  ['main/host/electron-youtrack-insecure-tls.ts', 1]
 ])
 
 // `globalThis.fetch` / `global.fetch` belong to global-fetch-call-site-audit.test.ts.
