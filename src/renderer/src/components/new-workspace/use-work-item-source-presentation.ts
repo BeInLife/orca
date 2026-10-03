@@ -18,6 +18,7 @@ import {
   isSmartWorkspaceSourceQueryWithinLimit
 } from '../../../../shared/new-workspace/smart-workspace-source-results'
 import { RESULT_LIMIT, type RowEntry } from './smart-workspace-name-field-model'
+import { isExactYouTrackMatch } from '../../../../shared/new-workspace/smart-workspace-youtrack-rows'
 import type { useWorkItemSourceFoundation } from './use-work-item-source-foundation'
 
 type Foundation = ReturnType<typeof useWorkItemSourceFoundation>
@@ -191,7 +192,8 @@ export function useWorkItemSourcePresentation(
     if (jiraSource.intent) {
       return 'jira'
     }
-    if (rows.some((row) => row.kind === 'youtrack')) {
+    // Why: only an exact ID/URL pins the highlight; ID-prefix suggestions stay keyboard-navigable.
+    if (rows.some((row) => row.kind === 'youtrack' && isExactYouTrackMatch(row.issue, trimmed))) {
       return 'youtrack'
     }
     if (/^#\d+$/.test(trimmed) || parseGitHubIssueOrPRLink(trimmed) !== null) {
