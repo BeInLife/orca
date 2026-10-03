@@ -5,6 +5,7 @@ import {
   parseYouTrackIssueReference
 } from './youtrack-issue-reference'
 import { buildSmartWorkspaceSourceRows } from './new-workspace/smart-workspace-source-results'
+import { isExactYouTrackMatch } from './new-workspace/smart-workspace-youtrack-rows'
 import type { YouTrackIssue } from './youtrack-types'
 
 const BASE = 'https://yt.example.com/youtrack'
@@ -96,6 +97,12 @@ describe('buildSmartWorkspaceSourceRows with a YouTrack issue', () => {
       youtrackIssues: [issue]
     })
     expect(rows.map((row) => row.kind)).toEqual(['use-name', 'youtrack'])
+  })
+
+  it('counts only a full ID or issue URL as an exact match', () => {
+    expect(isExactYouTrackMatch(issue, ' proj-81 ')).toBe(true)
+    expect(isExactYouTrackMatch(issue, `${BASE}/issue/PROJ-81`)).toBe(true)
+    expect(isExactYouTrackMatch(issue, 'proj-8')).toBe(false)
   })
 
   it('leaves other modes alone', () => {
