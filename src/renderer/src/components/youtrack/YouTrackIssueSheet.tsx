@@ -4,12 +4,18 @@ import { VisuallyHidden } from 'radix-ui'
 import { ArrowRight, ChevronDown, ExternalLink, LoaderCircle, X } from 'lucide-react'
 import CommentMarkdown from '@/components/sidebar/CommentMarkdown'
 import { Button } from '@/components/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { translate } from '@/i18n/i18n'
 import { formatUiRelativeTimeFromDate } from '@/i18n/relative-time-format'
-import { cn } from '@/lib/utils'
 import type {
   YouTrackComment,
   YouTrackIssue,
@@ -77,8 +83,8 @@ function StatePicker({
   }
 
   return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
+    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
+      <DropdownMenuTrigger asChild>
         <button
           type="button"
           disabled={saving || !issue.stateFieldName}
@@ -98,41 +104,35 @@ function StatePicker({
             <ChevronDown className="size-3 text-muted-foreground" />
           )}
         </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-56" align="start">
-        <div className="max-h-72 overflow-y-auto scrollbar-sleek">
-          {loading ? (
-            <div className="flex justify-center py-3">
-              <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
-            </div>
-          ) : options && options.length === 0 ? (
-            <p className="px-2 py-1.5 text-[12px] text-muted-foreground">
-              {translate('youtrack.detail.noTransitions', 'No available state changes.')}
-            </p>
-          ) : (
-            options?.map((option) => (
-              <button
-                key={`${option.kind}:${option.id}`}
-                type="button"
-                disabled={option.current}
-                onClick={() => void choose(option)}
-                className={cn(
-                  'flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left text-[12px] hover:bg-accent disabled:opacity-60',
-                  option.current && 'font-medium'
-                )}
-              >
-                <span className="truncate">{option.label}</span>
-                {option.isResolved ? (
-                  <span className="text-[10px] text-muted-foreground">
-                    {translate('youtrack.detail.resolvedState', 'resolves')}
-                  </span>
-                ) : null}
-              </button>
-            ))
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="max-h-72 w-56" align="start">
+        {loading ? (
+          <div className="flex justify-center py-3">
+            <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
+          </div>
+        ) : options && options.length === 0 ? (
+          <DropdownMenuLabel>
+            {translate('youtrack.detail.noTransitions', 'No available state changes.')}
+          </DropdownMenuLabel>
+        ) : (
+          options?.map((option) => (
+            <DropdownMenuItem
+              key={`${option.kind}:${option.id}`}
+              disabled={option.current}
+              onSelect={() => void choose(option)}
+              className="justify-between"
+            >
+              <span className="truncate">{option.label}</span>
+              {option.isResolved ? (
+                <DropdownMenuShortcut>
+                  {translate('youtrack.detail.resolvedState', 'resolves')}
+                </DropdownMenuShortcut>
+              ) : null}
+            </DropdownMenuItem>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

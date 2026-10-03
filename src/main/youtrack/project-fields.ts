@@ -4,7 +4,12 @@ import type {
   YouTrackFieldSchema,
   YouTrackProjectSummary
 } from '../../shared/youtrack-types'
-import { isRawRecord, type RawRecord } from './issue-mapping'
+import {
+  activeBundleValues,
+  isRawRecord,
+  rawRecords as records,
+  type RawRecord
+} from './raw-record'
 import { youtrackRequest, type YouTrackCredentials } from './youtrack-request'
 
 const CACHE_TTL_MS = 5 * 60_000
@@ -38,10 +43,6 @@ function fresh<T>(entry: CacheEntry<T> | null | undefined): T | null {
   return entry && Date.now() - entry.at < CACHE_TTL_MS ? entry.value : null
 }
 
-function records(value: unknown): RawRecord[] {
-  return Array.isArray(value) ? value.filter(isRawRecord) : []
-}
-
 function text(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null
 }
@@ -63,10 +64,10 @@ function toOptions(kind: YouTrackFieldKind, bundle: unknown): YouTrackFieldOptio
       }))
       .sort((a, b) => a.label.localeCompare(b.label))
   }
-  return records(bundle.values)
-    .filter((value) => value.archived !== true && text(value.name))
-    .sort((a, b) => Number(a.ordinal ?? 0) - Number(b.ordinal ?? 0))
-    .map((value) => ({ value: String(value.name), label: String(value.name) }))
+  return activeBundleValues(bundle).map((value) => ({
+    value: String(value.name),
+    label: String(value.name)
+  }))
 }
 
 export function toFieldSchema(raw: RawRecord): YouTrackFieldSchema | null {

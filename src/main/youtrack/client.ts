@@ -22,14 +22,13 @@ import {
 } from './credential-store'
 import {
   COMMENT_FIELDS,
-  isRawRecord,
-  type RawRecord,
   DETAIL_ISSUE_FIELDS,
   LIST_ISSUE_FIELDS,
   toYouTrackComment,
   toYouTrackIssue,
   toYouTrackUser
 } from './issue-mapping'
+import { activeBundleValues, isRawRecord, type RawRecord } from './raw-record'
 import {
   normalizeYouTrackBaseUrl,
   youtrackRequest,
@@ -60,18 +59,19 @@ export function getCredentials(): YouTrackCredentials {
   return { baseUrl: site.baseUrl, token, allowInsecureTls: site.allowInsecureTls === true }
 }
 
-function issuePath(idReadable: string): string {
+export function issuePath(idReadable: string): string {
   return `/api/issues/${encodeURIComponent(idReadable)}`
 }
 
 export function getStatus(): YouTrackConnectionStatus {
   const site = getSite()
+  const credentialError = getCredentialError()
   return {
     connected: site !== null,
     baseUrl: site?.baseUrl ?? null,
     viewer: site?.viewer ?? null,
     allowInsecureTls: site?.allowInsecureTls === true,
-    ...(getCredentialError() ? { credentialError: getCredentialError() ?? undefined } : {}),
+    ...(credentialError ? { credentialError } : {}),
     credentialProtection: site ? getTokenProtection() : null
   }
 }
@@ -229,21 +229,16 @@ function readEventOptions(field: RawRecord): YouTrackStateOption[] {
 function readValueOptions(field: RawRecord): YouTrackStateOption[] {
   const current = isRawRecord(field.value) ? field.value.name : null
   const projectField = isRawRecord(field.projectCustomField) ? field.projectCustomField : null
-  const bundle = isRawRecord(projectField?.bundle) ? projectField.bundle : null
-  const values = Array.isArray(bundle?.values) ? bundle.values.filter(isRawRecord) : []
-  return values
-    .filter((value) => typeof value.name === 'string' && value.archived !== true)
-    .sort((a, b) => Number(a.ordinal ?? 0) - Number(b.ordinal ?? 0))
-    .map((value) => {
-      const name = String(value.name)
-      return {
-        id: typeof value.id === 'string' ? value.id : name,
-        label: name,
-        kind: 'value' as const,
-        isResolved: value.isResolved === true,
-        current: name === current
-      }
-    })
+  return activeBundleValues(projectField?.bundle).map((value) => {
+    const name = String(value.name)
+    return {
+      id: typeof value.id === 'string' ? value.id : name,
+      label: name,
+      kind: 'value' as const,
+      isResolved: value.isResolved === true,
+      current: name === current
+    }
+  })
 }
 
 export async function getStateOptions(idReadable: string): Promise<YouTrackStateOptionsResult> {

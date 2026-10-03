@@ -1,12 +1,21 @@
 import { useState } from 'react'
 import { Check, ChevronDown, LoaderCircle } from 'lucide-react'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList
+} from '@/components/ui/command'
+import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { translate } from '@/i18n/i18n'
 import { cn } from '@/lib/utils'
 import type { YouTrackFieldSchema } from '../../../../shared/youtrack-types'
 
-const FIELD_INPUT_CLASS =
-  'h-7 w-full min-w-0 rounded-md border border-input bg-transparent px-2 text-[12px] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
+// Why a sentinel: cmdk needs a value per item, and option values are user data.
+const CLEAR_ITEM_VALUE = '__orca_clear_field__'
 
 function optionLabel(field: YouTrackFieldSchema, value: string): string {
   return field.options.find((option) => option.value === value)?.label ?? value
@@ -32,14 +41,6 @@ export function YouTrackOptionPicker({
   disabled?: boolean
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
-  const [filter, setFilter] = useState('')
-  const needle = filter.trim().toLowerCase()
-  const visible = needle
-    ? field.options.filter(
-        (option) =>
-          option.label.toLowerCase().includes(needle) || option.value.toLowerCase().includes(needle)
-      )
-    : field.options
 
   const choose = (value: string): void => {
     if (!field.multi) {
@@ -53,13 +54,7 @@ export function YouTrackOptionPicker({
   }
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next)
-        setFilter('')
-      }}
-    >
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -77,45 +72,43 @@ export function YouTrackOptionPicker({
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-60" align="start">
-        {field.options.length > 8 ? (
-          <input
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            placeholder={translate('youtrack.fields.filter', 'Filter…')}
-            className={cn(FIELD_INPUT_CLASS, 'mb-1')}
-            autoFocus
-          />
-        ) : null}
-        <div className="max-h-64 overflow-y-auto scrollbar-sleek">
-          {!field.required ? (
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false)
-                onChange([])
-              }}
-              className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-[12px] text-muted-foreground hover:bg-accent"
-            >
-              {field.emptyText ?? translate('youtrack.fields.clear', 'Clear')}
-            </button>
+        <Command>
+          {field.options.length > 8 ? (
+            <CommandInput autoFocus placeholder={translate('youtrack.fields.filter', 'Filter…')} />
           ) : null}
-          {visible.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => choose(option.value)}
-              className="flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left text-[12px] hover:bg-accent"
-            >
-              <span className="truncate">{option.label}</span>
-              {values.includes(option.value) ? <Check className="size-3 shrink-0" /> : null}
-            </button>
-          ))}
-          {visible.length === 0 ? (
-            <p className="px-2 py-1.5 text-[12px] text-muted-foreground">
+          <CommandList className="max-h-64">
+            <CommandEmpty>
               {translate('youtrack.fields.noOptions', 'No matching values.')}
-            </p>
-          ) : null}
-        </div>
+            </CommandEmpty>
+            <CommandGroup>
+              {!field.required ? (
+                <CommandItem
+                  value={CLEAR_ITEM_VALUE}
+                  onSelect={() => {
+                    setOpen(false)
+                    onChange([])
+                  }}
+                >
+                  <span className="text-muted-foreground">
+                    {field.emptyText ?? translate('youtrack.fields.clear', 'Clear')}
+                  </span>
+                </CommandItem>
+              ) : null}
+              {field.options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.value}
+                  keywords={[option.label]}
+                  onSelect={() => choose(option.value)}
+                  className="justify-between"
+                >
+                  <span className="truncate">{option.label}</span>
+                  {values.includes(option.value) ? <Check className="size-3" /> : null}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
       </PopoverContent>
     </Popover>
   )
@@ -155,7 +148,7 @@ export function YouTrackScalarInput({
           ? 'number'
           : 'text'
   return (
-    <input
+    <Input
       type={inputType}
       value={value}
       onChange={(event) => onChange(event.target.value)}
@@ -173,7 +166,6 @@ export function YouTrackScalarInput({
       placeholder={placeholderFor(field)}
       autoFocus={autoFocus}
       disabled={disabled}
-      className={FIELD_INPUT_CLASS}
     />
   )
 }

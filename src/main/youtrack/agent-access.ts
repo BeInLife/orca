@@ -1,13 +1,13 @@
 import type { z } from 'zod'
 import type {
   YouTrackCommentAdd,
-  YouTrackCurrentContext,
   YouTrackFieldSet,
   YouTrackIssueCreate,
   YouTrackIssueList,
   YouTrackIssueRead,
   YouTrackStateSet
 } from '../../shared/rpc-contract/youtrack-agent-params'
+import type { CurrentWorktreeContextHints } from '../../shared/current-worktree-context'
 import type { Worktree } from '../../shared/worktree/types'
 import { parseYouTrackIssueReference } from '../../shared/youtrack-issue-reference'
 import type { YouTrackComment, YouTrackIssue } from '../../shared/youtrack-types'
@@ -21,15 +21,13 @@ import {
   setState
 } from './client'
 import { createIssue, listProjects, updateField } from './issue-mutations'
+import {
+  resolveCallerWorktree,
+  type CallerWorktreeFailure,
+  type CallerWorktreeLookup
+} from '../runtime/caller-worktree-resolution'
 
-/** The slice of the Orca runtime `--current` needs; all public runtime methods. */
-export type YouTrackWorktreeResolver = {
-  showTerminal(handle: string): Promise<{ worktreeId: string }>
-  showManagedWorktree(selector: string): Promise<Worktree>
-  resolveWorktreeForContainedPath(cwd: string): Promise<Worktree | null>
-}
-
-type IssueTarget = { id?: string; current?: z.infer<typeof YouTrackCurrentContext> }
+type IssueTarget = { id?: string; current?: CurrentWorktreeContextHints }
 
 function unwrap<T>(result: ({ ok: true } & T) | { ok: false; error: string }): T {
   if (!result.ok) {
@@ -38,36 +36,15 @@ function unwrap<T>(result: ({ ok: true } & T) | { ok: false; error: string }): T
   return result
 }
 
-async function resolveCurrentWorktree(
-  context: z.infer<typeof YouTrackCurrentContext>,
-  runtime: YouTrackWorktreeResolver
-): Promise<Worktree> {
-  if (context.terminalHandle) {
-    const terminal = await runtime.showTerminal(context.terminalHandle).catch(() => null)
-    if (terminal) {
-      if (context.worktreeId && context.worktreeId !== terminal.worktreeId) {
-        throw new Error('The provided worktree context does not match the caller terminal.')
-      }
-      return runtime.showManagedWorktree(`id:${terminal.worktreeId}`)
-    }
-    // Stale handle (e.g. a terminal from another Orca instance): trust cwd only when local.
-    if (context.remote === true || context.worktreeId) {
-      throw new Error('Could not verify the current YouTrack-linked worktree.')
-    }
-  }
-  const worktree =
-    context.remote !== true && context.cwd
-      ? await runtime.resolveWorktreeForContainedPath(context.cwd)
-      : null
-  if (!worktree) {
-    throw new Error('Run --current from inside an Orca-managed worktree, or pass an issue ID.')
-  }
-  return worktree
+const CURRENT_WORKTREE_ERRORS: Record<CallerWorktreeFailure, string> = {
+  mismatch: 'The provided worktree context does not match the caller terminal.',
+  unverified: 'Could not verify the current YouTrack-linked worktree.',
+  outside: 'Run --current from inside an Orca-managed worktree, or pass an issue ID.'
 }
 
 export async function resolveYouTrackIssueId(
   target: IssueTarget,
-  runtime: YouTrackWorktreeResolver
+  worktrees: CallerWorktreeLookup<Worktree>
 ): Promise<string> {
   if (target.id) {
     const id = parseYouTrackIssueReference(target.id, getStatus().baseUrl)
@@ -79,8 +56,11 @@ export async function resolveYouTrackIssueId(
   if (!target.current) {
     throw new Error('Pass an issue ID, or --current from inside a YouTrack-linked worktree.')
   }
-  const worktree = await resolveCurrentWorktree(target.current, runtime)
-  const item = worktree.linkedWorkItem
+  const resolved = await resolveCallerWorktree(target.current, worktrees)
+  if (!resolved.ok) {
+    throw new Error(CURRENT_WORKTREE_ERRORS[resolved.reason])
+  }
+  const item = resolved.worktree.linkedWorkItem
   if (item?.provider !== 'youtrack' || !item.youtrackIdentifier) {
     throw new Error('The current worktree is not linked to a YouTrack issue.')
   }
@@ -89,9 +69,9 @@ export async function resolveYouTrackIssueId(
 
 export async function readYouTrackIssueForAgents(
   params: z.infer<typeof YouTrackIssueRead>,
-  runtime: YouTrackWorktreeResolver
+  worktrees: CallerWorktreeLookup<Worktree>
 ): Promise<{ issue: YouTrackIssue; comments?: YouTrackComment[] }> {
-  const id = await resolveYouTrackIssueId(params, runtime)
+  const id = await resolveYouTrackIssueId(params, worktrees)
   const { issue } = unwrap(await getIssue(id))
   if (!params.comments) {
     return { issue }
@@ -107,17 +87,17 @@ export async function listYouTrackIssuesForAgents(
 
 export async function addYouTrackCommentForAgents(
   params: z.infer<typeof YouTrackCommentAdd>,
-  runtime: YouTrackWorktreeResolver
+  worktrees: CallerWorktreeLookup<Worktree>
 ): Promise<{ idReadable: string; comment: YouTrackComment }> {
-  const idReadable = await resolveYouTrackIssueId(params, runtime)
+  const idReadable = await resolveYouTrackIssueId(params, worktrees)
   return { idReadable, comment: unwrap(await addComment(idReadable, params.text)).comment }
 }
 
 export async function setYouTrackStateForAgents(
   params: z.infer<typeof YouTrackStateSet>,
-  runtime: YouTrackWorktreeResolver
+  worktrees: CallerWorktreeLookup<Worktree>
 ): Promise<{ issue: YouTrackIssue }> {
-  const idReadable = await resolveYouTrackIssueId(params, runtime)
+  const idReadable = await resolveYouTrackIssueId(params, worktrees)
   const { options } = unwrap(await getStateOptions(idReadable))
   const wanted = params.state.trim().toLowerCase()
   const option = options.find((candidate) => candidate.label.toLowerCase() === wanted)
@@ -132,10 +112,13 @@ export async function setYouTrackStateForAgents(
 
 export async function setYouTrackFieldForAgents(
   params: z.infer<typeof YouTrackFieldSet>,
-  runtime: YouTrackWorktreeResolver
+  worktrees: CallerWorktreeLookup<Worktree>
 ): Promise<{ issue: YouTrackIssue }> {
-  const idReadable = await resolveYouTrackIssueId(params, runtime)
+  const idReadable = await resolveYouTrackIssueId(params, worktrees)
   const current = unwrap(await getIssue(idReadable)).issue
+  if (current.stateFieldName?.toLowerCase() === params.name.trim().toLowerCase()) {
+    throw new Error(`Use "orca youtrack state set" to change ${current.stateFieldName}.`)
+  }
   const result = await updateField({
     idReadable,
     projectId: current.project.id,

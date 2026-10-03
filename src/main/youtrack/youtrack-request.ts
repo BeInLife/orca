@@ -1,6 +1,6 @@
 import { ensureElectronProxyFromEnvironment } from '../network/proxy-settings'
 import { getMainHttpClient } from '../network/http-client'
-import { isRawRecord } from './issue-mapping'
+import { isRawRecord } from './raw-record'
 
 const REQUEST_TIMEOUT_MS = 30_000
 

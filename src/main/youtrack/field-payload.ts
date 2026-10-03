@@ -108,9 +108,16 @@ export function buildFieldPayload(
   values: string[],
   workTime: WorkTime = DEFAULT_WORK_TIME
 ): PayloadResult {
+  // Why: a raw state write skips workflow transitions; state changes go through setState.
+  if (schema.kind === 'state') {
+    return {
+      ok: false,
+      error: `${schema.name} follows the project workflow; change it as a state transition.`
+    }
+  }
   const picked = values.map((value) => value.trim()).filter(Boolean)
   const stem = OPTION_TYPE_STEM[schema.kind]
-  if (stem || schema.kind === 'state') {
+  if (stem) {
     const known = new Set(schema.options.map((option) => option.value))
     const unknown = picked.find((value) => !known.has(value))
     if (unknown) {
@@ -118,16 +125,6 @@ export function buildFieldPayload(
     }
     const key = schema.kind === 'user' ? 'login' : 'name'
     const toValue = (value: string): Record<string, string> => ({ [key]: value })
-    if (schema.kind === 'state') {
-      return {
-        ok: true,
-        payload: {
-          name: schema.name,
-          $type: 'StateIssueCustomField',
-          value: picked[0] ? toValue(picked[0]) : null
-        }
-      }
-    }
     return {
       ok: true,
       payload: schema.multi

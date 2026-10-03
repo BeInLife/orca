@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { parseYouTrackIssueIdPrefix, parseYouTrackIssueReference } from './youtrack-issue-reference'
+import {
+  isYouTrackLookupTextFor,
+  parseYouTrackIssueIdPrefix,
+  parseYouTrackIssueReference
+} from './youtrack-issue-reference'
 import { buildSmartWorkspaceSourceRows } from './new-workspace/smart-workspace-source-results'
 import type { YouTrackIssue } from './youtrack-types'
 
@@ -28,6 +32,22 @@ describe('parseYouTrackIssueIdPrefix', () => {
     expect(parseYouTrackIssueIdPrefix(' proj-8 ')).toBe('PROJ-8')
     expect(parseYouTrackIssueIdPrefix('proj')).toBeNull()
     expect(parseYouTrackIssueIdPrefix('fix-login')).toBeNull()
+  })
+})
+
+describe('isYouTrackLookupTextFor', () => {
+  const issue = { idReadable: 'PROJ-81', url: `${BASE}/issue/PROJ-81` }
+
+  it('treats the ID, an ID prefix, or the issue URL as lookup text', () => {
+    expect(isYouTrackLookupTextFor('proj-8', issue)).toBe(true)
+    expect(isYouTrackLookupTextFor('PROJ-81', issue)).toBe(true)
+    expect(isYouTrackLookupTextFor(`${BASE}/issue/PROJ-81/some-slug`, issue)).toBe(true)
+  })
+
+  it('keeps names that did not find this issue', () => {
+    expect(isYouTrackLookupTextFor('proj-9', issue)).toBe(false)
+    expect(isYouTrackLookupTextFor('fix login', issue)).toBe(false)
+    expect(isYouTrackLookupTextFor(`${BASE}/issue/PROJ-82`, issue)).toBe(false)
   })
 })
 
@@ -66,6 +86,16 @@ describe('buildSmartWorkspaceSourceRows with a YouTrack issue', () => {
   it('puts the resolved issue first in smart mode', () => {
     const rows = buildSmartWorkspaceSourceRows({ ...base, mode: 'smart', youtrackIssues: [issue] })
     expect(rows.map((row) => row.kind)).toEqual(['youtrack', 'use-name'])
+  })
+
+  it('keeps "use as name" first when the input is only an ID prefix', () => {
+    const rows = buildSmartWorkspaceSourceRows({
+      ...base,
+      value: 'proj-8',
+      mode: 'smart',
+      youtrackIssues: [issue]
+    })
+    expect(rows.map((row) => row.kind)).toEqual(['use-name', 'youtrack'])
   })
 
   it('leaves other modes alone', () => {

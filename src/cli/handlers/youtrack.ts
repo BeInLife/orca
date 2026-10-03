@@ -1,16 +1,20 @@
-import { readFile } from 'node:fs/promises'
-import { isAbsolute, join } from 'node:path'
-import type { YouTrackComment, YouTrackIssue } from '../../shared/youtrack-types'
+import {
+  YOUTRACK_BODY_MAX_CHARS,
+  YOUTRACK_ISSUE_PRESETS,
+  type YouTrackComment,
+  type YouTrackIssue
+} from '../../shared/youtrack-types'
+import type { CurrentWorktreeContextHints } from '../../shared/current-worktree-context'
 import type { CommandHandler } from '../dispatch'
 import {
   getOptionalPositiveIntegerFlag,
   getOptionalStringFlag,
   getRepeatedStringFlag,
-  getRequiredStringFlag,
-  getRequiredStringFlagAllowingEmpty
+  getRequiredStringFlag
 } from '../flags'
 import { printResult } from '../format'
-import { buildLinearCurrentContext } from '../linear-request-builders'
+import { readCommandBody } from '../command-body-input'
+import { buildCurrentWorktreeContext } from '../current-worktree-context'
 import { RuntimeClientError } from '../runtime-client'
 import {
   formatYouTrackComment,
@@ -19,10 +23,9 @@ import {
   formatYouTrackIssueSaved
 } from '../youtrack-format'
 
-const PRESETS = ['assigned', 'reported', 'open', 'done'] as const
 const WRITE_TIMEOUT_MS = 60_000
 
-type IssueTarget = { id?: string; current?: ReturnType<typeof buildLinearCurrentContext> }
+type IssueTarget = { id?: string; current?: CurrentWorktreeContextHints }
 
 function buildIssueTarget(
   flags: Map<string, string | boolean>,
@@ -34,7 +37,7 @@ function buildIssueTarget(
     if (id) {
       throw new RuntimeClientError('invalid_argument', 'Use either an issue ID or --current')
     }
-    return { current: buildLinearCurrentContext(cwd, remote) }
+    return { current: buildCurrentWorktreeContext(cwd, remote) }
   }
   if (!id) {
     throw new RuntimeClientError('invalid_argument', 'Pass an issue ID or --current')
@@ -42,32 +45,10 @@ function buildIssueTarget(
   return { id }
 }
 
-async function readBody(
-  flags: Map<string, string | boolean>,
-  cwd: string,
-  required: boolean
-): Promise<string | undefined> {
-  if (flags.has('body') && flags.has('body-file')) {
-    throw new RuntimeClientError('invalid_argument', 'Use either --body or --body-file, not both')
-  }
-  if (flags.has('body')) {
-    return getRequiredStringFlagAllowingEmpty(flags, 'body')
-  }
-  if (flags.has('body-file')) {
-    const path = getRequiredStringFlag(flags, 'body-file')
-    if (path === '-') {
-      const chunks: Buffer[] = []
-      for await (const chunk of process.stdin) {
-        chunks.push(Buffer.from(chunk))
-      }
-      return Buffer.concat(chunks).toString('utf8')
-    }
-    return readFile(isAbsolute(path) ? path : join(cwd, path), 'utf8')
-  }
-  if (required) {
-    throw new RuntimeClientError('invalid_argument', 'Missing --body or --body-file')
-  }
-  return undefined
+const YOUTRACK_BODY_OPTIONS = {
+  maximumCharacters: YOUTRACK_BODY_MAX_CHARS,
+  tooLargeCode: 'invalid_argument',
+  label: 'YouTrack text'
 }
 
 /** "Name=Value" pairs; repeating a name builds a multi-value field. */
@@ -97,10 +78,10 @@ export const YOUTRACK_HANDLERS: Record<string, CommandHandler> = {
   },
   'youtrack list': async ({ flags, client, json }) => {
     const preset = getOptionalStringFlag(flags, 'preset')
-    if (preset && !PRESETS.some((value) => value === preset)) {
+    if (preset && !YOUTRACK_ISSUE_PRESETS.some((value) => value === preset)) {
       throw new RuntimeClientError(
         'invalid_argument',
-        `--preset must be one of ${PRESETS.join(', ')}`
+        `--preset must be one of ${YOUTRACK_ISSUE_PRESETS.join(', ')}`
       )
     }
     const response = await client.call<{ issues: YouTrackIssue[] }>('youtrack.list', {
@@ -111,7 +92,7 @@ export const YOUTRACK_HANDLERS: Record<string, CommandHandler> = {
     printResult(response, json, formatYouTrackIssueList)
   },
   'youtrack comment add': async ({ flags, client, cwd, json }) => {
-    const text = (await readBody(flags, cwd, true)) ?? ''
+    const text = await readCommandBody(flags, cwd, { ...YOUTRACK_BODY_OPTIONS, required: true })
     const response = await client.call<{ idReadable: string; comment: YouTrackComment }>(
       'youtrack.commentAdd',
       { ...buildIssueTarget(flags, cwd, client.isRemote), text },
@@ -153,7 +134,10 @@ export const YOUTRACK_HANDLERS: Record<string, CommandHandler> = {
       {
         project: getRequiredStringFlag(flags, 'project'),
         summary: getRequiredStringFlag(flags, 'summary'),
-        description: await readBody(flags, cwd, false),
+        description: await readCommandBody(flags, cwd, {
+          ...YOUTRACK_BODY_OPTIONS,
+          required: false
+        }),
         fields: parseFieldFlags(getRepeatedStringFlag(flags, 'field'))
       },
       { timeoutMs: WRITE_TIMEOUT_MS }

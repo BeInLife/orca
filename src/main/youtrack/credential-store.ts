@@ -10,7 +10,7 @@ import {
 } from '../integration-credential-file'
 import type { SecretAtRestProtection } from '../../shared/secret-at-rest-protection'
 import type { YouTrackUser } from '../../shared/youtrack-types'
-import { isRawRecord } from './issue-mapping'
+import { isRawRecord } from './raw-record'
 
 export type YouTrackSiteFile = {
   version: 1

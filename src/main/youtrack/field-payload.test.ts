@@ -71,6 +71,15 @@ describe('buildFieldPayload', () => {
     })
   })
 
+  it('refuses raw state writes so workflow transitions are not bypassed', () => {
+    const state = schema({
+      name: 'State',
+      kind: 'state',
+      options: [{ value: 'Fixed', label: 'Fixed' }]
+    })
+    expect(buildFieldPayload(state, ['Fixed'])).toMatchObject({ ok: false })
+  })
+
   it('converts scalar inputs to the typed values YouTrack stores', () => {
     expect(
       buildFieldPayload(schema({ name: 'Estimation', kind: 'period' }), ['1d 2h'])

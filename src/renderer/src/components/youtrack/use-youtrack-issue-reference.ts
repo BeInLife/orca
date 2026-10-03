@@ -12,28 +12,37 @@ const ASSIGNED_CACHE_TTL_MS = 60_000
 const MAX_SUGGESTIONS = 8
 
 // Why module-level: reopening the dialog or retyping a prefix reuses one fetch per minute.
-let assignedCache: { at: number; issues: YouTrackIssue[] } | null = null
-let assignedInFlight: Promise<YouTrackIssue[]> | null = null
+// Keyed by instance + viewer so switching accounts never shows the previous account's issues.
+let assignedCache: { key: string; at: number; issues: YouTrackIssue[] } | null = null
+let assignedInFlight: { key: string; promise: Promise<YouTrackIssue[]> } | null = null
 
-function loadAssignedIssues(): Promise<YouTrackIssue[]> {
+function loadAssignedIssues(accountKey: string): Promise<YouTrackIssue[]> {
   const api = window.api?.youtrack
   if (!api) {
     return Promise.resolve([])
   }
-  if (assignedCache && Date.now() - assignedCache.at < ASSIGNED_CACHE_TTL_MS) {
+  if (assignedCache?.key === accountKey && Date.now() - assignedCache.at < ASSIGNED_CACHE_TTL_MS) {
     return Promise.resolve(assignedCache.issues)
   }
-  assignedInFlight ??= api
-    .listIssues({ preset: 'assigned', limit: 100 })
-    .then((result) => {
-      const issues = result.ok ? result.issues : []
-      assignedCache = { at: Date.now(), issues }
-      return issues
-    })
-    .finally(() => {
-      assignedInFlight = null
-    })
-  return assignedInFlight
+  if (assignedInFlight?.key !== accountKey) {
+    const promise = api
+      .listIssues({ preset: 'assigned', limit: 100 })
+      .then((result) => {
+        // Why: failures aren't cached, so the next keystroke retries.
+        if (!result.ok) {
+          return []
+        }
+        assignedCache = { key: accountKey, at: Date.now(), issues: result.issues }
+        return result.issues
+      })
+      .finally(() => {
+        if (assignedInFlight?.promise === promise) {
+          assignedInFlight = null
+        }
+      })
+    assignedInFlight = { key: accountKey, promise }
+  }
+  return assignedInFlight.promise
 }
 
 /**
@@ -44,6 +53,7 @@ export function useYouTrackIssueSuggestions(value: string, enabled: boolean): Yo
   const connected = useYouTrackStore((s) => s.status.connected)
   const statusChecked = useYouTrackStore((s) => s.statusChecked)
   const baseUrl = useYouTrackStore((s) => s.status.baseUrl)
+  const viewerLogin = useYouTrackStore((s) => s.status.viewer?.login ?? '')
   const checkStatus = useYouTrackStore((s) => s.checkStatus)
   const [resolved, setResolved] = useState<YouTrackIssue | null>(null)
   const [assigned, setAssigned] = useState<YouTrackIssue[]>([])
@@ -64,7 +74,7 @@ export function useYouTrackIssueSuggestions(value: string, enabled: boolean): Yo
       return
     }
     let cancelled = false
-    void loadAssignedIssues().then((issues) => {
+    void loadAssignedIssues(`${baseUrl}|${viewerLogin}`).then((issues) => {
       if (!cancelled) {
         setAssigned(issues)
       }
@@ -72,7 +82,7 @@ export function useYouTrackIssueSuggestions(value: string, enabled: boolean): Yo
     return () => {
       cancelled = true
     }
-  }, [prefix])
+  }, [prefix, baseUrl, viewerLogin])
 
   useEffect(() => {
     const api = window.api?.youtrack
