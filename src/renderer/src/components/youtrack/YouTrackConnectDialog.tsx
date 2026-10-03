@@ -13,7 +13,23 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { translate } from '@/i18n/i18n'
+import { useAppStore } from '@/store'
+import { TASK_PROVIDERS, normalizeVisibleTaskProviders } from '../../../../shared/task-providers'
 import { useYouTrackStore } from './youtrack-store'
+
+/** Connecting is the opt-in for the hidden-by-default YouTrack provider. */
+function showYouTrackInTasks(): void {
+  const { settings, updateSettings } = useAppStore.getState()
+  const visible = normalizeVisibleTaskProviders(settings?.visibleTaskProviders)
+  if (!settings || visible.includes('youtrack')) {
+    return
+  }
+  void updateSettings({
+    visibleTaskProviders: TASK_PROVIDERS.filter(
+      (provider) => provider === 'youtrack' || visible.includes(provider)
+    )
+  })
+}
 
 /** True for plain-HTTP addresses off this machine, where the token would cross the network unencrypted. */
 function sendsTokenInClearText(input: string): boolean {
@@ -74,6 +90,7 @@ export function YouTrackConnectDialog({
       return
     }
     setToken('')
+    showYouTrackInTasks()
     onOpenChange(false)
     onConnected?.()
   }

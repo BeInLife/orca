@@ -5,9 +5,9 @@ import type {
   YouTrackProjectsResult,
   YouTrackUpdateFieldArgs
 } from '../../shared/youtrack-types'
-import { errorMessage, getCredentials, getIssue } from './client'
+import { errorMessage, getCredentials, getIssue, issuePath } from './client'
 import { buildFieldPayload, DEFAULT_WORK_TIME, type WorkTime } from './field-payload'
-import { isRawRecord } from './issue-mapping'
+import { isRawRecord } from './raw-record'
 import { clearProjectFieldCaches, fetchProjectFields, fetchProjects } from './project-fields'
 import { youtrackRequest, type YouTrackCredentials } from './youtrack-request'
 
@@ -70,11 +70,10 @@ export async function updateField(args: YouTrackUpdateFieldArgs): Promise<YouTra
     if (!built.ok) {
       return built
     }
-    await youtrackRequest(
-      credentials,
-      `/api/issues/${encodeURIComponent(args.idReadable)}?fields=id`,
-      { method: 'POST', body: JSON.stringify({ customFields: [built.payload] }) }
-    )
+    await youtrackRequest(credentials, `${issuePath(args.idReadable)}?fields=id`, {
+      method: 'POST',
+      body: JSON.stringify({ customFields: [built.payload] })
+    })
     return getIssue(args.idReadable)
   } catch (error) {
     return { ok: false, error: errorMessage(error, `Failed to update ${args.field.name}.`) }
@@ -89,8 +88,11 @@ export async function createIssue(args: YouTrackCreateIssueArgs): Promise<YouTra
     const customFields: Record<string, unknown>[] = []
     for (const input of args.fields) {
       const schema = schemas.find((field) => field.name === input.name)
+      if (!schema) {
+        return { ok: false, error: `${input.name} is not a field of this project.` }
+      }
       // Why skip empty: omitting a field lets YouTrack apply the project default.
-      if (!schema || input.values.every((value) => !value.trim())) {
+      if (input.values.every((value) => !value.trim())) {
         continue
       }
       const built = buildFieldPayload(schema, input.values, time)

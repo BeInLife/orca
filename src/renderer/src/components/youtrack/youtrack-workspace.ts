@@ -13,6 +13,8 @@ import { parseWorkspaceKey } from '../../../../shared/workspace-scope'
 import type { Worktree } from '../../../../shared/worktree/types'
 import type { YouTrackIssue } from '../../../../shared/youtrack-types'
 
+type AppState = ReturnType<typeof useAppStore.getState>
+
 export function buildYouTrackLinkedWorkItem(issue: YouTrackIssue): LinkedWorkItemSummary {
   return {
     type: 'issue',
@@ -25,44 +27,33 @@ export function buildYouTrackLinkedWorkItem(issue: YouTrackIssue): LinkedWorkIte
   }
 }
 
-function findInState(
-  state: ReturnType<typeof useAppStore.getState>,
-  idReadable: string
-): Worktree | null {
+/** The YouTrack issue a live workspace is linked to, upper-cased; null otherwise. */
+function linkedIssueId(worktree: Worktree): string | null {
+  const item = worktree.linkedWorkItem
+  return !worktree.isArchived && item?.provider === 'youtrack' && item.youtrackIdentifier
+    ? item.youtrackIdentifier.toUpperCase()
+    : null
+}
+
+function findInState(state: AppState, idReadable: string): Worktree | null {
   const wanted = idReadable.toUpperCase()
   const workspaces = [
     ...state.allWorktrees(),
     ...state.folderWorkspaces.map(folderWorkspaceToWorktree)
   ]
-  return (
-    workspaces.find(
-      (worktree) =>
-        !worktree.isArchived &&
-        worktree.linkedWorkItem?.provider === 'youtrack' &&
-        worktree.linkedWorkItem.youtrackIdentifier?.toUpperCase() === wanted
-    ) ?? null
-  )
+  return workspaces.find((worktree) => linkedIssueId(worktree) === wanted) ?? null
 }
 
 export function findYouTrackIssueWorkspace(idReadable: string): Worktree | null {
   return findInState(useAppStore.getState(), idReadable)
 }
 
-type AppState = ReturnType<typeof useAppStore.getState>
-
 // Why: the selector reruns on every store write; cache linked IDs per snapshot identity.
 const linkedIdsByWorktrees = new WeakMap<AppState['worktreesByRepo'], Set<string>>()
 const linkedIdsByFolders = new WeakMap<AppState['folderWorkspaces'], Set<string>>()
 
 function collectLinkedIds(workspaces: readonly Worktree[]): Set<string> {
-  const ids = new Set<string>()
-  for (const worktree of workspaces) {
-    const item = worktree.linkedWorkItem
-    if (!worktree.isArchived && item?.provider === 'youtrack' && item.youtrackIdentifier) {
-      ids.add(item.youtrackIdentifier.toUpperCase())
-    }
-  }
-  return ids
+  return new Set(workspaces.map(linkedIssueId).filter((id) => id !== null))
 }
 
 function hasLinkedWorkspace(state: AppState, wanted: string): boolean {

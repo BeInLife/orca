@@ -107,7 +107,11 @@ export type YouTrackStateOption = {
   current?: boolean
 }
 
-export type YouTrackIssuePreset = 'assigned' | 'reported' | 'open' | 'done'
+/** Cap for a comment or description written through Orca. */
+export const YOUTRACK_BODY_MAX_CHARS = 100_000
+
+export const YOUTRACK_ISSUE_PRESETS = ['assigned', 'reported', 'open', 'done'] as const
+export type YouTrackIssuePreset = (typeof YOUTRACK_ISSUE_PRESETS)[number]
 
 export type YouTrackConnectArgs = {
   baseUrl: string

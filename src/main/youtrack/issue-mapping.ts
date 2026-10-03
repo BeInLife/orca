@@ -8,6 +8,7 @@ import type {
   YouTrackState,
   YouTrackUser
 } from '../../shared/youtrack-types'
+import { isRawRecord, type RawRecord } from './raw-record'
 
 const VALUE_FIELDS =
   '$type,id,name,login,fullName,avatarUrl,isResolved,presentation,text,color(background,foreground)'
@@ -39,13 +40,7 @@ export const DETAIL_ISSUE_FIELDS = [
 
 export const COMMENT_FIELDS = `id,text,created,updated,deleted,author(${USER_FIELDS})`
 
-export type RawRecord = Record<string, unknown>
-
 const STATE_FIELD_TYPES = new Set(['StateIssueCustomField', 'StateMachineIssueCustomField'])
-
-export function isRawRecord(value: unknown): value is RawRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
 
 function asRecord(value: unknown): RawRecord | null {
   return isRawRecord(value) ? value : null
