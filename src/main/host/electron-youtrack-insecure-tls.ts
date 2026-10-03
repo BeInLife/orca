@@ -7,8 +7,9 @@ import { setYouTrackInsecureTlsFetch } from '../youtrack/youtrack-request'
 const ACCEPT_CERTIFICATE = 0
 const USE_CHROMIUM_VERDICT = -3
 
-let insecureSession: Session | null = null
-let trustedHostname: string | null = null
+// Why one session per host: each verify proc trusts only its own hostname, so a redirect or a
+// reconnect to another host can never inherit a relaxed certificate check.
+const insecureSessions = new Map<string, Session>()
 
 /**
  * A dedicated, in-memory session for self-hosted YouTrack behind a self-signed or
@@ -20,17 +21,21 @@ export async function getInsecureTlsSession(
   hostname: string,
   networkProxySettings: NetworkProxySettings
 ): Promise<Session> {
-  trustedHostname = hostname.toLowerCase()
+  const trustedHostname = hostname.toLowerCase()
+  let insecureSession = insecureSessions.get(trustedHostname)
   if (!insecureSession) {
-    const created = session.fromPartition('orca-youtrack-insecure-tls', { cache: false })
-    created.setCertificateVerifyProc((request, callback) => {
+    insecureSession = session.fromPartition(
+      `orca-youtrack-insecure-tls-${encodeURIComponent(trustedHostname)}`,
+      { cache: false }
+    )
+    insecureSession.setCertificateVerifyProc((request, callback) => {
       callback(
         request.hostname.toLowerCase() === trustedHostname
           ? ACCEPT_CERTIFICATE
           : USE_CHROMIUM_VERDICT
       )
     })
-    insecureSession = created
+    insecureSessions.set(trustedHostname, insecureSession)
   }
   // Why every request: applying is memoized per session, and re-reading picks up proxy edits
   // made in Settings, so this partition follows Orca/env/system proxies like the default one.

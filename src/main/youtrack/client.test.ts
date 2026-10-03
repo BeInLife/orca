@@ -37,12 +37,22 @@ describe('connect', () => {
     )
   })
 
-  it('does not retry another path after an auth failure', async () => {
+  it('tries the path as entered when the root rejects the token, keeping the root error', async () => {
+    mocks.fetch.mockReset()
+    mocks.fetch.mockImplementation(async (url: string) =>
+      url.startsWith('https://corp.example.com/projects/yt/api/')
+        ? viewer()
+        : new Response('{}', { status: 401 })
+    )
+    await expect(
+      connect({ baseUrl: 'https://corp.example.com/projects/yt', token: 't' })
+    ).resolves.toMatchObject({ ok: true })
+
     mocks.fetch.mockReset()
     mocks.fetch.mockResolvedValue(new Response('{}', { status: 401 }))
     const result = await connect({ baseUrl: 'https://corp.example.com/projects/yt', token: 't' })
-    expect(result.ok).toBe(false)
-    expect(mocks.fetch).toHaveBeenCalledOnce()
+    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/token/) })
+    expect(mocks.fetch).toHaveBeenCalledTimes(2)
   })
 })
 

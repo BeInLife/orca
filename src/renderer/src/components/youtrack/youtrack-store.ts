@@ -77,7 +77,9 @@ export const useYouTrackStore = create<YouTrackStore>((set, get) => ({
     if (result.ok) {
       // Why: project ids like "0-12" repeat across instances, so schemas can't outlive the site.
       clearYouTrackProjectFieldsCache()
-      set({ issues: [], issuesKey: null, issuesError: null })
+      // Why: an in-flight load belongs to the previous connection; its token must go stale.
+      latestLoadToken += 1
+      set({ issues: [], issuesKey: null, issuesError: null, issuesLoading: false })
       await get().checkStatus()
     }
     return result
@@ -86,6 +88,7 @@ export const useYouTrackStore = create<YouTrackStore>((set, get) => ({
   disconnect: async () => {
     await youtrackApi()?.disconnect()
     clearYouTrackProjectFieldsCache()
+    latestLoadToken += 1
     set({
       status: DISCONNECTED,
       issues: [],
