@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { translate } from '@/i18n/i18n'
+import { clearYouTrackProjectFieldsCache } from './use-youtrack-project-fields'
 import type {
   YouTrackConnectionStatus,
   YouTrackConnectResult,
@@ -74,6 +75,8 @@ export const useYouTrackStore = create<YouTrackStore>((set, get) => ({
     }
     const result = await api.connect({ baseUrl, token, allowInsecureTls })
     if (result.ok) {
+      // Why: project ids like "0-12" repeat across instances, so schemas can't outlive the site.
+      clearYouTrackProjectFieldsCache()
       set({ issues: [], issuesKey: null, issuesError: null })
       await get().checkStatus()
     }
@@ -82,6 +85,7 @@ export const useYouTrackStore = create<YouTrackStore>((set, get) => ({
 
   disconnect: async () => {
     await youtrackApi()?.disconnect()
+    clearYouTrackProjectFieldsCache()
     set({
       status: DISCONNECTED,
       issues: [],

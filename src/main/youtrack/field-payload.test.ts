@@ -89,6 +89,11 @@ describe('buildFieldPayload', () => {
     expect(buildFieldPayload(schema({ name: 'Due', kind: 'date' }), ['2026-10-31'])).toMatchObject({
       payload: { $type: 'DateIssueCustomField', value: Date.UTC(2026, 9, 31, 12) }
     })
+    expect(
+      buildFieldPayload(schema({ name: 'Starts', kind: 'datetime' }), ['2026-10-31T09:30'])
+    ).toMatchObject({
+      payload: { $type: 'SimpleIssueCustomField', value: new Date('2026-10-31T09:30').getTime() }
+    })
     expect(buildFieldPayload(schema({ name: 'Points', kind: 'integer' }), ['x'])).toMatchObject({
       ok: false
     })

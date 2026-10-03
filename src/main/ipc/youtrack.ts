@@ -84,11 +84,16 @@ export function registerYouTrackHandlers(
       if (typeof args?.baseUrl !== 'string' || typeof args?.token !== 'string') {
         return { ok: false, error: 'YouTrack URL and token are required.' }
       }
-      return connect({
+      const result = await connect({
         baseUrl: args.baseUrl,
         token: args.token,
         allowInsecureTls: args.allowInsecureTls === true
       })
+      // Why: a connect can switch instances without a disconnect; cached schemas belong to the old one.
+      if (result.ok) {
+        resetYouTrackMetadataCaches()
+      }
+      return result
     }
   )
 

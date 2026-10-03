@@ -1,9 +1,50 @@
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('../network/http-client', () => ({ getMainHttpClient: vi.fn() }))
-vi.mock('../network/proxy-settings', () => ({ ensureElectronProxyFromEnvironment: vi.fn() }))
+const mocks = vi.hoisted(() => ({ fetch: vi.fn(), saveSite: vi.fn() }))
 
-const { buildIssueQuery } = await import('./client')
+vi.mock('../network/http-client', () => ({
+  getMainHttpClient: () => ({ fetch: mocks.fetch, proxySession: () => null })
+}))
+vi.mock('../network/proxy-settings', () => ({
+  ensureElectronProxyFromEnvironment: vi.fn(async () => undefined)
+}))
+vi.mock('./credential-store', () => ({
+  clearSite: vi.fn(),
+  getCredentialError: vi.fn(() => null),
+  getSite: vi.fn(() => null),
+  getTokenProtection: vi.fn(() => null),
+  readToken: vi.fn(() => null),
+  saveSite: mocks.saveSite
+}))
+
+const { buildIssueQuery, connect } = await import('./client')
+
+describe('connect', () => {
+  const viewer = (): Response =>
+    new Response(JSON.stringify({ id: '1-1', login: 'me', fullName: 'Me' }), { status: 200 })
+
+  it('falls back to the path as entered when the trimmed root is not YouTrack', async () => {
+    mocks.fetch.mockImplementation(async (url: string) =>
+      url.startsWith('https://corp.example.com/projects/yt/api/')
+        ? viewer()
+        : new Response('{}', { status: 404 })
+    )
+    const result = await connect({ baseUrl: 'https://corp.example.com/projects/yt', token: 't' })
+    expect(result.ok).toBe(true)
+    expect(mocks.saveSite).toHaveBeenCalledWith(
+      expect.objectContaining({ baseUrl: 'https://corp.example.com/projects/yt' }),
+      't'
+    )
+  })
+
+  it('does not retry another path after an auth failure', async () => {
+    mocks.fetch.mockReset()
+    mocks.fetch.mockResolvedValue(new Response('{}', { status: 401 }))
+    const result = await connect({ baseUrl: 'https://corp.example.com/projects/yt', token: 't' })
+    expect(result.ok).toBe(false)
+    expect(mocks.fetch).toHaveBeenCalledOnce()
+  })
+})
 
 describe('buildIssueQuery', () => {
   it('maps presets to YouTrack queries sorted by update time', () => {
