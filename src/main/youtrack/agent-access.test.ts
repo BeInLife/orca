@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
   getStateOptions: vi.fn(),
   setState: vi.fn(),
   listProjects: vi.fn(),
-  createIssue: vi.fn()
+  createIssue: vi.fn(),
+  updateField: vi.fn()
 }))
 
 vi.mock('./client', () => ({
@@ -23,11 +24,15 @@ vi.mock('./client', () => ({
 vi.mock('./issue-mutations', () => ({
   listProjects: mocks.listProjects,
   createIssue: mocks.createIssue,
-  updateField: vi.fn()
+  updateField: mocks.updateField
 }))
 
-const { createYouTrackIssueForAgents, resolveYouTrackIssueId, setYouTrackStateForAgents } =
-  await import('./agent-access')
+const {
+  createYouTrackIssueForAgents,
+  resolveYouTrackIssueId,
+  setYouTrackFieldForAgents,
+  setYouTrackStateForAgents
+} = await import('./agent-access')
 
 function linkedWorktree(youtrackIdentifier: string | null): Worktree {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: resolution reads only linkedWorkItem; the rest of Worktree is irrelevant here.
@@ -41,8 +46,8 @@ function linkedWorktree(youtrackIdentifier: string | null): Worktree {
 function runtime(worktree: Worktree | null, terminalWorktreeId = 'wt-1') {
   return {
     showTerminal: vi.fn(async () => ({ worktreeId: terminalWorktreeId })),
-    showManagedWorktree: vi.fn(async () => worktree ?? linkedWorktree(null)),
-    resolveWorktreeForContainedPath: vi.fn(async () => worktree)
+    worktreeById: vi.fn(async () => worktree ?? linkedWorktree(null)),
+    worktreeForPath: vi.fn(async () => worktree)
   }
 }
 
@@ -63,7 +68,7 @@ describe('resolveYouTrackIssueId', () => {
     await expect(
       resolveYouTrackIssueId({ current: { terminalHandle: 'term-1' } }, viaTerminal)
     ).resolves.toBe('PROJ-7')
-    expect(viaTerminal.showManagedWorktree).toHaveBeenCalledWith('id:wt-1')
+    expect(viaTerminal.worktreeById).toHaveBeenCalledWith('wt-1')
 
     const viaCwd = runtime(linkedWorktree('PROJ-8'))
     await expect(resolveYouTrackIssueId({ current: { cwd: '/repo/wt' } }, viaCwd)).resolves.toBe(
@@ -114,6 +119,19 @@ describe('setYouTrackStateForAgents', () => {
     await expect(
       setYouTrackStateForAgents({ id: 'PROJ-1', state: 'Done' }, runtime(null))
     ).rejects.toThrow('Available: Fix, Reopen.')
+  })
+})
+
+describe('setYouTrackFieldForAgents', () => {
+  it('sends state changes to state set instead of writing the field', async () => {
+    mocks.getIssue.mockResolvedValue({
+      ok: true,
+      issue: { idReadable: 'PROJ-1', stateFieldName: 'State', project: { id: '0-16' } }
+    })
+    await expect(
+      setYouTrackFieldForAgents({ id: 'PROJ-1', name: 'state', values: ['Fixed'] }, runtime(null))
+    ).rejects.toThrow(/state set/)
+    expect(mocks.updateField).not.toHaveBeenCalled()
   })
 })
 

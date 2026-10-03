@@ -18,27 +18,26 @@ import {
   resetYouTrackMetadataCaches,
   updateField
 } from '../youtrack/issue-mutations'
-import { isRawRecord } from '../youtrack/issue-mapping'
+import { isRawRecord } from '../youtrack/raw-record'
 import { setYouTrackNetworkProxySettingsResolver } from '../youtrack/insecure-tls-session'
 import type { NetworkProxySettings } from '../../shared/network-proxy'
-import type {
-  YouTrackFieldInput,
-  YouTrackIssuePreset,
-  YouTrackListIssuesArgs,
-  YouTrackStateOption
+import { isYouTrackIssueId } from '../../shared/youtrack-issue-reference'
+import {
+  YOUTRACK_ISSUE_PRESETS,
+  type YouTrackFieldInput,
+  type YouTrackIssuePreset,
+  type YouTrackListIssuesArgs,
+  type YouTrackStateOption
 } from '../../shared/youtrack-types'
 
-const VALID_PRESETS: readonly YouTrackIssuePreset[] = ['assigned', 'reported', 'open', 'done']
-
 function readPreset(value: unknown): YouTrackIssuePreset | undefined {
-  return VALID_PRESETS.find((preset) => preset === value)
+  return YOUTRACK_ISSUE_PRESETS.find((preset) => preset === value)
 }
-// YouTrack readable ids look like PROJ-123; anything else never reaches the URL path.
-const ISSUE_ID_RE = /^[A-Za-z0-9_.]+-\d+$/
 
+// Why: only well-formed IDs (PROJ-123) ever reach the URL path.
 function readIssueId(value: unknown): string | null {
   const id = typeof value === 'string' ? value.trim() : ''
-  return ISSUE_ID_RE.test(id) ? id : null
+  return isYouTrackIssueId(id) ? id : null
 }
 
 function readProjectId(value: unknown): string | null {

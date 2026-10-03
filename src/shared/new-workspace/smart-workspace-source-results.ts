@@ -12,6 +12,7 @@ import {
   type SmartWorkspaceGitLabUrlIntent
 } from './smart-workspace-url-source-results'
 import { isSmartWorkspaceSourceQueryWithinLimit } from './smart-workspace-source-query'
+import { partitionYouTrackRows } from './smart-workspace-youtrack-rows'
 
 export {
   SMART_WORKSPACE_SOURCE_QUERY_MAX_BYTES,
@@ -274,18 +275,14 @@ export function buildSmartWorkspaceSourceRows({
   }
   const trimmed = value.trim()
   const nextRows: SmartWorkspaceSourceRow[] = []
+  // Why: only a full ID or issue URL outranks "use as name"; prefix suggestions follow it.
+  const [exactYouTrack, prefixYouTrack] = partitionYouTrackRows(youtrackIssues, trimmed)
   if (mode === 'smart') {
-    nextRows.push(
-      ...youtrackIssues.map((issue) => ({
-        kind: 'youtrack' as const,
-        value: `youtrack-${issue.idReadable}`,
-        issue
-      }))
-    )
+    nextRows.push(...exactYouTrack)
   }
   if (trimmed && mode === 'smart') {
     // Why: stable cmdk value — embedding the query remounted the row every keystroke.
-    nextRows.push({ kind: 'use-name', value: 'use-name', name: trimmed })
+    nextRows.push({ kind: 'use-name', value: 'use-name', name: trimmed }, ...prefixYouTrack)
   }
   if (mode === 'text') {
     return nextRows

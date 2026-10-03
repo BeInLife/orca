@@ -44,7 +44,7 @@ ORCA youtrack list --preset done --limit 10 --json
 ORCA youtrack list --query "project: PROJ #Unresolved" --json
 ```
 
-`--query` accepts any YouTrack query and overrides `--preset`.
+`--query` accepts any YouTrack query and overrides `--preset`. The `assigned` and `done` presets query the `Assignee` field; if an instance renamed it and `list` comes back empty, query that field by name instead.
 
 ## Updating An Issue
 
@@ -62,7 +62,7 @@ ORCA youtrack state set --current --to "Code Review" --json
 
 If the state is not available, the error lists the states or workflow transitions YouTrack allows from here. Choose only an exact, unambiguous match; otherwise leave the state unchanged and say so.
 
-Set fields by their YouTrack name. Repeat `--value` for multi-value fields; periods accept `2d 4h` or `1д`:
+Set fields by their YouTrack name. Repeat `--value` for multi-value fields; periods accept `2d 4h` or `1д`. The state field is not set this way; use `state set` so the project workflow applies:
 
 ```bash
 ORCA youtrack field set --current --name Priority --value Major --json
@@ -84,5 +84,7 @@ Include a concise repro, expected behavior, and actual behavior. Do not create a
 
 - "Pass an issue ID or --current": add one; `--current` only works inside a YouTrack-linked Orca worktree.
 - "not available for <ID>. Available: ...": pick an exact state from that list or leave the state alone.
+- "is not a field of this project": check the field name's spelling against `issue --json`; nothing was created or changed.
+- State-field refusals ("Use ... state set", "follows the project workflow"): move the issue with `state set` instead of `field set` / `create --field`.
 - "is not an allowed value for <field>": read the issue's project values with `issue --json` and retry once with an exact value.
 - "YouTrack is not connected": ask the user to connect YouTrack in Orca Settings → Integrations.

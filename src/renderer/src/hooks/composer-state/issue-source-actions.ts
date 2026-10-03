@@ -58,6 +58,7 @@ import {
 } from '../../../../shared/new-workspace/workspace-source'
 import type { SmartWorkspaceNameSelection } from '@/components/new-workspace/SmartWorkspaceNameField'
 import type { TaskSourceContext } from '../../../../shared/task-source-context'
+import { isYouTrackLookupTextFor } from '../../../../shared/youtrack-issue-reference'
 
 export function useIssueSourceActions(input: IssueSourceActionsInput) {
   const {
@@ -160,7 +161,11 @@ export function useIssueSourceActions(input: IssueSourceActionsInput) {
 
   // Why shared: string-keyed issue providers (Jira, YouTrack) link and auto-name identically.
   const applyIssueSource = useCallback(
-    (linkedItem: LinkedWorkItemSummary, sourceContext: TaskSourceContext | null): void => {
+    (
+      linkedItem: LinkedWorkItemSummary,
+      sourceContext: TaskSourceContext | null,
+      nameIsLookupText = false
+    ): void => {
       setLinkedIssue('')
       setLinkedPR(null)
       setLinkedGitLabIssue(null)
@@ -182,10 +187,11 @@ export function useIssueSourceActions(input: IssueSourceActionsInput) {
       // Why: issue lookups are async, so a name the user typed while one resolved must survive.
       if (
         suggestedName &&
-        shouldApplyWorkspaceSourceAutoName({
-          currentName: name,
-          lastAutoName: lastAutoNameRef.current
-        })
+        (nameIsLookupText ||
+          shouldApplyWorkspaceSourceAutoName({
+            currentName: name,
+            lastAutoName: lastAutoNameRef.current
+          }))
       ) {
         setName(suggestedName)
         lastAutoNameRef.current = suggestedName
@@ -218,8 +224,14 @@ export function useIssueSourceActions(input: IssueSourceActionsInput) {
     [applyIssueSource]
   )
   const handleSmartYouTrackIssueSelect = useCallback(
-    (issue: YouTrackIssue): void => applyIssueSource(buildYouTrackLinkedWorkItem(issue), null),
-    [applyIssueSource]
+    (issue: YouTrackIssue): void =>
+      // Why: the typed ID, ID prefix, or URL that found this issue is lookup text, not a chosen name.
+      applyIssueSource(
+        buildYouTrackLinkedWorkItem(issue),
+        null,
+        isYouTrackLookupTextFor(name, issue)
+      ),
+    [applyIssueSource, name]
   )
 
   const handleClearSmartNameSelection = useCallback((): void => {
