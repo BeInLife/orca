@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
 import { formatUiRelativeTimeFromDate } from '@/i18n/relative-time-format'
 import { cn } from '@/lib/utils'
+import { isImeOwnedKeyboardEvent } from '@/lib/ime-composition-keyboard-event'
 import type {
   YouTrackComment,
   YouTrackIssue,
@@ -198,7 +199,7 @@ export function YouTrackCommentComposer({
             const submitModifier = navigator.userAgent.includes('Mac')
               ? event.metaKey
               : event.ctrlKey
-            if (event.key === 'Enter' && submitModifier) {
+            if (event.key === 'Enter' && submitModifier && !isImeOwnedKeyboardEvent(event)) {
               event.preventDefault()
               onSubmit()
             }

@@ -34,8 +34,7 @@ type IssueSourceActionsInput = Pick<
 import { useCallback, useMemo } from 'react'
 import type { LinearIssue } from '../../../../shared/linear/issue-types'
 import type { JiraIssue } from '../../../../shared/jira/jira-types'
-import type { YouTrackIssue } from '../../../../shared/youtrack-types'
-import { buildYouTrackLinkedWorkItem } from '@/components/youtrack/youtrack-workspace'
+import { useYouTrackIssueSelect } from '@/components/youtrack/use-youtrack-issue-select'
 import {
   toLinearLinkedWorkItem,
   getLinkedItemDisplayName,
@@ -59,7 +58,6 @@ import {
 } from '../../../../shared/new-workspace/workspace-source'
 import type { SmartWorkspaceNameSelection } from '@/components/new-workspace/smart-workspace-name-field-model'
 import type { TaskSourceContext } from '../../../../shared/task-source-context'
-import { isYouTrackLookupTextFor } from '../../../../shared/youtrack-issue-reference'
 
 export function useIssueSourceActions(input: IssueSourceActionsInput) {
   const {
@@ -233,16 +231,7 @@ export function useIssueSourceActions(input: IssueSourceActionsInput) {
       applyIssueSource(buildJiraWorkspaceSource(issue), sourceContext),
     [applyIssueSource]
   )
-  const handleSmartYouTrackIssueSelect = useCallback(
-    (issue: YouTrackIssue): void =>
-      // Why: the typed ID, ID prefix, or URL that found this issue is lookup text, not a chosen name.
-      applyIssueSource(
-        buildYouTrackLinkedWorkItem(issue),
-        null,
-        isYouTrackLookupTextFor(name, issue)
-      ),
-    [applyIssueSource, name]
-  )
+  const handleSmartYouTrackIssueSelect = useYouTrackIssueSelect(applyIssueSource, name)
 
   const handleClearSmartNameSelection = useCallback((): void => {
     smartSourceSelectionRef.current = null
