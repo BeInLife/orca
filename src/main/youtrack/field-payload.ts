@@ -12,7 +12,7 @@ const OPTION_TYPE_STEM: Partial<Record<YouTrackFieldKind, string>> = {
 }
 
 // Units as YouTrack prints them in English and Russian locales.
-const PERIOD_UNIT_RE = /(\d+(?:[.,]\d+)?)\s*(w|н|d|д|h|ч|m|м)/gi
+const PERIOD_UNIT_RE = /(\d+(?:[.,]\d+)?)\s*(w|\u043d|d|\u0434|h|\u0447|m|\u043c)/gi
 
 /** Parses "1w 2d 3h 30m" (or "2д 4ч"); a bare number means minutes. */
 export function parsePeriodMinutes(input: string, workTime: WorkTime): number | null {
@@ -26,11 +26,11 @@ export function parsePeriodMinutes(input: string, workTime: WorkTime): number | 
     const amount = Number(match[1].replace(',', '.'))
     const unit = match[2]
     const factor =
-      unit === 'w' || unit === 'н'
+      unit === 'w' || unit === '\u043d'
         ? workTime.minutesADay * workTime.daysAWeek
-        : unit === 'd' || unit === 'д'
+        : unit === 'd' || unit === '\u0434'
           ? workTime.minutesADay
-          : unit === 'h' || unit === 'ч'
+          : unit === 'h' || unit === '\u0447'
             ? 60
             : 1
     minutes += amount * factor

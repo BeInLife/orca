@@ -7,6 +7,7 @@ import {
 } from '@/lib/worktree-activation'
 import { useAppStore } from '@/store'
 import { getIndexedAllWorktrees } from '@/store/worktree-repo-index'
+import { selectFolderWorkspaces, selectWorktreesByRepo } from '@/store/workspace-record-selectors'
 import { folderWorkspaceToWorktree } from '../../../../shared/folder-workspace-worktree'
 import { getLinkedWorkItemWorkspaceName } from '../../../../shared/workspace-name'
 import { parseWorkspaceKey } from '../../../../shared/workspace-scope'
@@ -39,7 +40,7 @@ function findInState(state: AppState, idReadable: string): Worktree | null {
   const wanted = idReadable.toUpperCase()
   const workspaces = [
     ...state.allWorktrees(),
-    ...state.folderWorkspaces.map(folderWorkspaceToWorktree)
+    ...selectFolderWorkspaces(state).map(folderWorkspaceToWorktree)
   ]
   return workspaces.find((worktree) => linkedIssueId(worktree) === wanted) ?? null
 }
@@ -57,18 +58,20 @@ function collectLinkedIds(workspaces: readonly Worktree[]): Set<string> {
 }
 
 function hasLinkedWorkspace(state: AppState, wanted: string): boolean {
-  let worktreeIds = linkedIdsByWorktrees.get(state.worktreesByRepo)
+  const worktreesByRepo = selectWorktreesByRepo(state)
+  let worktreeIds = linkedIdsByWorktrees.get(worktreesByRepo)
   if (!worktreeIds) {
-    worktreeIds = collectLinkedIds(getIndexedAllWorktrees(state.worktreesByRepo))
-    linkedIdsByWorktrees.set(state.worktreesByRepo, worktreeIds)
+    worktreeIds = collectLinkedIds(getIndexedAllWorktrees(worktreesByRepo))
+    linkedIdsByWorktrees.set(worktreesByRepo, worktreeIds)
   }
   if (worktreeIds.has(wanted)) {
     return true
   }
-  let folderIds = linkedIdsByFolders.get(state.folderWorkspaces)
+  const folderWorkspaces = selectFolderWorkspaces(state)
+  let folderIds = linkedIdsByFolders.get(folderWorkspaces)
   if (!folderIds) {
-    folderIds = collectLinkedIds(state.folderWorkspaces.map(folderWorkspaceToWorktree))
-    linkedIdsByFolders.set(state.folderWorkspaces, folderIds)
+    folderIds = collectLinkedIds(folderWorkspaces.map(folderWorkspaceToWorktree))
+    linkedIdsByFolders.set(folderWorkspaces, folderIds)
   }
   return folderIds.has(wanted)
 }

@@ -4,6 +4,7 @@ import { JIRA_HANDLER_GROUP } from './jira-handler-group'
 import { LINEAR_HANDLER_GROUP } from './linear-handler-group'
 import { REFERENCE_HANDLER_GROUP } from './reference-handler-group'
 import { PLUGIN_HANDLER_GROUPS } from './plugin-handler-groups'
+import { YOUTRACK_HANDLER_GROUP } from './youtrack-handler-group'
 
 export type HandlerGroup = {
   name: string
@@ -17,6 +18,7 @@ export const HANDLER_GROUPS: readonly HandlerGroup[] = [
   JIRA_HANDLER_GROUP,
   LINEAR_HANDLER_GROUP,
   REFERENCE_HANDLER_GROUP,
+  YOUTRACK_HANDLER_GROUP,
   {
     name: 'core',
     keys: ['claude-teams', 'open', 'serve', 'status'],
@@ -268,18 +270,6 @@ export const HANDLER_GROUPS: readonly HandlerGroup[] = [
       'environment forget'
     ],
     load: async () => (await import('./handlers/managed-server.js')).MANAGED_SERVER_HANDLERS
-  },
-  {
-    name: 'youtrack',
-    keys: [
-      'youtrack issue',
-      'youtrack list',
-      'youtrack comment add',
-      'youtrack state set',
-      'youtrack field set',
-      'youtrack create'
-    ],
-    load: async () => (await import('./handlers/youtrack.js')).YOUTRACK_HANDLERS
   },
   {
     name: 'vm',
