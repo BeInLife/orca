@@ -7,6 +7,7 @@ import type {
   YouTrackProjectFieldsResult,
   YouTrackProjectsResult,
   YouTrackUpdateFieldArgs,
+  YouTrackUpdateTextArgs,
   YouTrackIssueResult,
   YouTrackListIssuesArgs,
   YouTrackListIssuesResult,
@@ -38,5 +39,6 @@ export type YouTrackApi = {
     force?: boolean
   }) => Promise<YouTrackProjectFieldsResult>
   updateField: (args: YouTrackUpdateFieldArgs) => Promise<YouTrackIssueResult>
+  updateText: (args: YouTrackUpdateTextArgs) => Promise<YouTrackIssueResult>
   createIssue: (args: YouTrackCreateIssueArgs) => Promise<YouTrackIssueResult>
 }

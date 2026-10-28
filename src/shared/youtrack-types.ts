@@ -213,6 +213,11 @@ export type YouTrackUpdateFieldArgs = {
   field: YouTrackFieldInput
 }
 
+/** One of summary or description; YouTrack keeps whichever is omitted. */
+export type YouTrackUpdateTextArgs =
+  | { idReadable: string; summary: string }
+  | { idReadable: string; description: string }
+
 export type YouTrackCreateIssueArgs = {
   projectId: string
   summary: string

@@ -3,7 +3,8 @@ import type {
   YouTrackIssueResult,
   YouTrackProjectFieldsResult,
   YouTrackProjectsResult,
-  YouTrackUpdateFieldArgs
+  YouTrackUpdateFieldArgs,
+  YouTrackUpdateTextArgs
 } from '../../shared/youtrack-types'
 import { errorMessage, getCredentials, getIssue, issuePath } from './client'
 import { buildFieldPayload, DEFAULT_WORK_TIME, type WorkTime } from './field-payload'
@@ -77,6 +78,25 @@ export async function updateField(args: YouTrackUpdateFieldArgs): Promise<YouTra
     return getIssue(args.idReadable)
   } catch (error) {
     return { ok: false, error: errorMessage(error, `Failed to update ${args.field.name}.`) }
+  }
+}
+
+export async function updateIssueText(args: YouTrackUpdateTextArgs): Promise<YouTrackIssueResult> {
+  const { idReadable, ...text } = args
+  try {
+    await youtrackRequest(getCredentials(), `${issuePath(idReadable)}?fields=id`, {
+      method: 'POST',
+      body: JSON.stringify(text)
+    })
+    return getIssue(idReadable)
+  } catch (error) {
+    return {
+      ok: false,
+      error: errorMessage(
+        error,
+        'summary' in text ? 'Failed to update the summary.' : 'Failed to update the description.'
+      )
+    }
   }
 }
 

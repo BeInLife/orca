@@ -15,5 +15,6 @@ export const youtrackApi: YouTrackApi = {
   listProjects: (args) => ipcRenderer.invoke('youtrack:listProjects', args),
   getProjectFields: (args) => ipcRenderer.invoke('youtrack:getProjectFields', args),
   updateField: (args) => ipcRenderer.invoke('youtrack:updateField', args),
+  updateText: (args) => ipcRenderer.invoke('youtrack:updateText', args),
   createIssue: (args) => ipcRenderer.invoke('youtrack:createIssue', args)
 }

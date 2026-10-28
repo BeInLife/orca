@@ -23266,7 +23266,7 @@
       "openWorkspace": "Open workspace",
       "startWorkspace": "Start workspace",
       "close": "Close",
-      "noDescription": "No description provided.",
+      "summaryRequired": "Summary is required",
       "links": "Links",
       "comments": "Comments",
       "retry": "Retry",

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { VisuallyHidden } from 'radix-ui'
 import { ArrowRight, ChevronDown, ExternalLink, LoaderCircle, X } from 'lucide-react'
-import CommentMarkdown from '@/components/sidebar/CommentMarkdown'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -30,6 +29,7 @@ import {
 import { startYouTrackIssueWorkspace, useHasYouTrackIssueWorkspace } from './youtrack-workspace'
 import { useYouTrackStore } from './youtrack-store'
 import { YouTrackFieldsAside } from './YouTrackFieldsAside'
+import { YouTrackIssueTextEditor } from './YouTrackIssueTextEditor'
 
 function StatePicker({
   issue,
@@ -280,9 +280,14 @@ export function YouTrackIssueSheet({
                     <span>{formatUiRelativeTimeFromDate(displayed.updatedAt)}</span>
                     {detailLoading ? <LoaderCircle className="size-3 animate-spin" /> : null}
                   </div>
-                  <h2 className="mt-1 text-[20px] font-semibold leading-tight text-foreground">
-                    {displayed.summary}
-                  </h2>
+                  <div className="mt-1 -ml-1">
+                    <YouTrackIssueTextEditor
+                      key={displayed.idReadable}
+                      issue={displayed}
+                      field="title"
+                      onIssueChanged={handleIssueChanged}
+                    />
+                  </div>
                 </div>
                 <Button
                   onClick={() => startYouTrackIssueWorkspace(displayed)}
@@ -341,19 +346,19 @@ export function YouTrackIssueSheet({
             <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_228px]">
               <div className="min-h-0 overflow-y-auto scrollbar-sleek">
                 <YouTrackLinksSection issue={displayed} onOpenIssue={(id) => selectIssue(id)} />
-                <section className="border-b border-border/40 px-4 py-4">
-                  {displayed.description?.trim() ? (
-                    <CommentMarkdown
-                      content={displayed.description}
-                      variant="document"
-                      className="text-[14px] leading-relaxed"
+                <section className="relative border-b border-border/40 px-4 py-4">
+                  {/* List rows omit the description, so edit only the loaded issue. */}
+                  {detail?.idReadable === displayed.idReadable ? (
+                    <YouTrackIssueTextEditor
+                      key={displayed.idReadable}
+                      issue={detail}
+                      field="description"
+                      onIssueChanged={handleIssueChanged}
                     />
-                  ) : detailLoading && displayed.description === undefined ? (
-                    <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
+                  ) : detailError ? (
+                    <p className="text-sm text-muted-foreground">{detailError}</p>
                   ) : (
-                    <p className="text-sm italic text-muted-foreground">
-                      {translate('youtrack.detail.noDescription', 'No description provided.')}
-                    </p>
+                    <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
                   )}
                 </section>
                 <YouTrackCommentsSection

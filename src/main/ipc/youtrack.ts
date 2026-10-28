@@ -16,13 +16,15 @@ import {
   getProjectFields,
   listProjects,
   resetYouTrackMetadataCaches,
-  updateField
+  updateField,
+  updateIssueText
 } from '../youtrack/issue-mutations'
 import { isRawRecord } from '../youtrack/raw-record'
 import { installYouTrackInsecureTlsFetch } from '../host/electron-youtrack-insecure-tls'
 import type { NetworkProxySettings } from '../../shared/network-proxy'
 import { isYouTrackIssueId } from '../../shared/youtrack-issue-reference'
 import {
+  YOUTRACK_BODY_MAX_CHARS,
   YOUTRACK_ISSUE_PRESETS,
   type YouTrackFieldInput,
   type YouTrackIssuePreset,
@@ -178,6 +180,29 @@ export function registerYouTrackHandlers(
       return updateField({ idReadable: id, projectId, field })
     }
   )
+
+  ipcMain.handle('youtrack:updateText', async (_event, args: unknown) => {
+    if (!isRawRecord(args)) {
+      return { ok: false, error: 'An issue is required.' }
+    }
+    const id = readIssueId(args.idReadable)
+    if (!id) {
+      return { ok: false, error: 'An issue is required.' }
+    }
+    if (typeof args.summary === 'string') {
+      const summary = args.summary.trim()
+      return summary
+        ? updateIssueText({ idReadable: id, summary: summary.slice(0, 1000) })
+        : { ok: false, error: 'Summary is required.' }
+    }
+    if (typeof args.description === 'string') {
+      return updateIssueText({
+        idReadable: id,
+        description: args.description.slice(0, YOUTRACK_BODY_MAX_CHARS)
+      })
+    }
+    return { ok: false, error: 'A summary or description is required.' }
+  })
 
   ipcMain.handle('youtrack:createIssue', async (_event, args: unknown) => {
     if (!isRawRecord(args)) {
