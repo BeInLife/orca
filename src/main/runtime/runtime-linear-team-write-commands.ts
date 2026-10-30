@@ -231,7 +231,7 @@ export class RuntimeLinearTeamWriteCommands extends RuntimeLinearDedupeCommands 
 
     const resolved = await resolveCallerWorktree<ResolvedWorktree>(context, {
       showTerminal: (handle) => this.showTerminal(handle),
-      worktreeById: (worktreeId) => this.resolveWorktreeSelector(`id:${worktreeId}`),
+      worktreeById: (worktreeId) => this.resolveWorkspaceSelector(`id:${worktreeId}`),
       worktreeForPath: (cwd) => this.resolveWorktreeForContainedPath(cwd)
     })
     if (!resolved.ok) {
