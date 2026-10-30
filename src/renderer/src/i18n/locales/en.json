@@ -23175,7 +23175,9 @@
   },
   "youtrack": {
     "smartField": {
-      "placeholderSuffix": "{{base}} or YouTrack ID"
+      "mode": "YouTrack",
+      "placeholder": "Type a name, #1234, issue URL, or YouTrack ID",
+      "search": "Search YouTrack issues or paste an ID"
     },
     "settings": {
       "connectTitle": "Connect YouTrack",

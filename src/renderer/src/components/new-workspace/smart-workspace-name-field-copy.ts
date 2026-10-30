@@ -50,9 +50,7 @@ export function getSmartWorkspaceNameFieldCopy({
             'Type a name, #1234, GitHub, GitLab, or Jira URL'
           )
   const smartPlaceholder = youtrackConnected
-    ? translate('youtrack.smartField.placeholderSuffix', '{{base}} or YouTrack ID', {
-        base: basePlaceholder
-      })
+    ? translate('youtrack.smartField.placeholder', 'Type a name, #1234, issue URL, or YouTrack ID')
     : basePlaceholder
   const crossRepoSwitchIsTaskSource = crossRepoSwitchTarget === 'task-source'
   const crossRepoSwitchTitle = crossRepoSwitchIsTaskSource
@@ -110,15 +108,17 @@ export function getSmartWorkspaceNameFieldCopy({
                   'auto.components.new.workspace.SmartWorkspaceNameField.searchLinear',
                   'Search Linear issues'
                 )
-              : mode === 'jira'
-                ? translate(
-                    'auto.components.new.workspace.SmartWorkspaceNameField.searchJira',
-                    'Search Jira issues or paste an issue URL'
-                  )
-                : translate(
-                    'auto.components.new.workspace.SmartWorkspaceNameField.workspaceName',
-                    'Workspace name'
-                  )
+              : mode === 'youtrack'
+                ? translate('youtrack.smartField.search', 'Search YouTrack issues or paste an ID')
+                : mode === 'jira'
+                  ? translate(
+                      'auto.components.new.workspace.SmartWorkspaceNameField.searchJira',
+                      'Search Jira issues or paste an issue URL'
+                    )
+                  : translate(
+                      'auto.components.new.workspace.SmartWorkspaceNameField.workspaceName',
+                      'Workspace name'
+                    )
 
   return {
     crossRepoSwitchTitle,

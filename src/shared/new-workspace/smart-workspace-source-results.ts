@@ -10,7 +10,8 @@ import { buildJiraTextMatchJql } from '../jira/jira-search-input-jql'
 import type { GitHubIssueOrPRLink } from '../github/links'
 import {
   buildSmartWorkspaceUrlSourceRows,
-  type SmartWorkspaceGitLabUrlIntent
+  type SmartWorkspaceGitLabUrlIntent,
+  type SmartWorkspaceUrlSourceMode
 } from './smart-workspace-url-source-results'
 import { isSmartWorkspaceSourceQueryWithinLimit } from './smart-workspace-source-query'
 import { partitionYouTrackRows } from './smart-workspace-youtrack-rows'
@@ -20,7 +21,7 @@ export {
   isSmartWorkspaceSourceQueryWithinLimit
 } from './smart-workspace-source-query'
 
-export type SmartNameMode = 'smart' | 'github' | 'gitlab' | 'branches' | 'linear' | 'jira' | 'text'
+export type SmartNameMode = SmartWorkspaceUrlSourceMode
 
 export type SmartWorkspaceSourceRow =
   | { kind: 'use-name'; value: string; name: string }
@@ -41,6 +42,7 @@ const EMPTY_HINT_BY_MODE: Record<SmartNameMode, string> = {
   branches: 'No matching branches.',
   linear: 'Start typing to search Linear issues.',
   jira: 'Start typing to search Jira issues, or paste an issue URL.',
+  youtrack: 'No matching YouTrack issues.',
   text: ''
 }
 
@@ -315,6 +317,9 @@ export function buildSmartWorkspaceSourceRows({
   }
   if (mode === 'jira') {
     nextRows.push(...jiraIssues.map(toJiraSourceRow))
+  }
+  if (mode === 'youtrack') {
+    nextRows.push(...exactYouTrack, ...prefixYouTrack)
   }
   return nextRows.slice(0, resultLimit + 1)
 }

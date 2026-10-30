@@ -38,6 +38,7 @@ export function useWorkItemSourcePresentation(
   const {
     jiraSource,
     youtrackIssues,
+    youtrackLoading,
     branches,
     mode,
     branchResultsSource,
@@ -247,7 +248,12 @@ export function useWorkItemSourcePresentation(
     linearLoading && (!linearUrlIntentOwnsInput || showLinearUrlLoadingFeedback)
   const loading = jiraSource.intent
     ? jiraSource.loading
-    : githubLoading || gitlabLoading || branchesLoading || visibleLinearLoading || jiraLoading
+    : githubLoading ||
+      gitlabLoading ||
+      branchesLoading ||
+      visibleLinearLoading ||
+      jiraLoading ||
+      youtrackLoading
   // Why: only spin on first load, not refreshes with retained rows.
   const showSearchSpinner = loading && searchResultRows.length === 0
   const ActiveInputIcon =
